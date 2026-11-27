@@ -441,6 +441,180 @@ def s3_dekodieren(text: str) -> list[int]:
     return lam
 
 
+
+# ------------------------------------------- S3: der Ablauf ueber eine Leitung
+#
+# Spezifikation fuer C2b (WEG_C.md), noch nicht im Knoten. Reihenfolge:
+#
+#   1. vormerken (Ausgeber): K, Inhaberin, eingetragene Leitung, Zahl der
+#      Pulse N, Wurzel der Pruefsummen ueber ALLE N Pulse und die Deckung.
+#      Die Praeparatorinnen binden ihre Werte, BEVOR ein Puls die Leitung
+#      verlaesst; die Deckung liegt ab hier im Topf (wer vormerkt, zahlt --
+#      das begrenzt Muell). Ohne Ausgabe innerhalb der Frist geht sie zurueck.
+#   2. melden (Inhaberin, genau einmal): Lambda, die gemessenen Pulse, in der
+#      einen Kodierung (s3_kodieren). Mindestens gamma_det * N der Leitung.
+#      Ein zweites Melden gibt es nicht: sonst koennte sie neu wuerfeln,
+#      sobald sie den Zufall kennt.
+#   3. ziehen (jeder, genau einmal): Zufall aus einer Zeit NACH der Meldung
+#      bestimmt die Teilmenge (s3_teilmenge). Stelle i des Tokens ist Puls
+#      teil[i].
+#   4. ausgeben (Ausgeber): n = len(teil), Pruefgroesse je Annahmestelle
+#      mindestens k_leitung(tol, t, v, theta, frei) der Leitung, 2k <= n. Die
+#      Wurzel ist die der Vormerkung. Danach weiter wie Variante S.
+#
+# Die Leitung (Messwerte theta, frei, gamma_det) traegt das Register ein
+# (C2a, zwei Drittel der Pruefer); hier steht sie als Eintrag bereit.
+
+S3_FRIST = 3600            # Sekunden von der Vormerkung bis zur Ausgabe
+S3_VORMERKUNGEN_MAX = 64   # offene Vormerkungen zugleich
+
+
+class KetteS3(KetteS):
+    def __init__(self):
+        super().__init__()
+        self.leitungen: dict[str, dict] = {}
+        self.vorgemerkt: dict[str, dict] = {}
+
+    def leitung(self, name: str, theta_zehntel: int, frei_ppm: int, gamma_ppm: int):
+        if not (name.startswith("leitung-") and 0 <= theta_zehntel <= 100 and 0 <= frei_ppm <= wk.FREI_PPM_MAX
+                and 1 <= gamma_ppm <= 1_000_000):
+            raise Abgewiesen("Leitung: Form")
+        self.leitungen[name] = {"theta": theta_zehntel, "frei": frei_ppm, "gamma": gamma_ppm}
+
+    def _verfallen(self, zeit: int):
+        for K in [K for K, e in self.vorgemerkt.items() if zeit > e["zeit"] + S3_FRIST]:
+            e = self.vorgemerkt.pop(K)
+            self.topf -= e["deckung"]
+            self.konten[e["von"]] += e["deckung"]
+
+    def vormerken(self, K: str, von: str, inhaber: str, leitung: str, n_puls: int, wurzel: bytes,
+                  deckung: int, zeit: int):
+        self._verfallen(zeit)
+        if K in self.token or K in self.vorgemerkt:
+            raise Abgewiesen("Vormerken: K schon da")
+        if leitung not in self.leitungen:
+            raise Abgewiesen("Vormerken: Leitung nicht eingetragen")
+        if not (1 <= n_puls <= N_PULS_MAX) or len(wurzel) != 32 or deckung <= 0 or inhaber == von:
+            raise Abgewiesen("Vormerken: Form")
+        if len(self.vorgemerkt) >= S3_VORMERKUNGEN_MAX:
+            raise Abgewiesen("Vormerken: zu viele offene Vormerkungen")
+        if self.konten.get(von, 0) < deckung:
+            raise Abgewiesen("Vormerken: Deckung")
+        self.konten[von] -= deckung
+        self.topf += deckung
+        self.vorgemerkt[K] = {"von": von, "inhaber": inhaber, "leitung": leitung, "n_puls": n_puls,
+                              "wurzel": wurzel, "deckung": deckung, "zeit": zeit,
+                              "lam": None, "meldung_zeit": None, "teil": None}
+
+    def melden(self, K: str, von: str, text: str, zeit: int):
+        self._verfallen(zeit)
+        e = self.vorgemerkt.get(K)
+        if e is None or von != e["inhaber"]:
+            raise Abgewiesen("Melden: unbekannt oder nicht die Inhaberin")
+        if e["lam"] is not None:
+            raise Abgewiesen("Melden: schon gemeldet")
+        if zeit <= e["zeit"]:
+            raise Abgewiesen("Melden: nicht nach der Vormerkung")
+        lam = s3_meldung(e["n_puls"], self.leitungen[e["leitung"]]["gamma"], s3_dekodieren(text))
+        e["lam"], e["meldung_zeit"] = lam, zeit
+
+    def ziehen(self, K: str, zufall: bytes, zufall_zeit: int):
+        e = self.vorgemerkt.get(K)
+        if e is None or e["lam"] is None:
+            raise Abgewiesen("Ziehen: nicht gemeldet")
+        if e["teil"] is not None:
+            raise Abgewiesen("Ziehen: schon gezogen")
+        e["teil"] = s3_teilmenge(K, e["lam"], zufall, e["meldung_zeit"], zufall_zeit)
+
+    def k_note(self, K: str, tol: int, t: int, n_val: int) -> int:
+        e = self.vorgemerkt[K]
+        l = self.leitungen[e["leitung"]]
+        return wk.k_leitung(tol, t, n_val, l["theta"], l["frei"])
+
+    def ausgeben_s3(self, K: str, k_je_stelle: int, proben: list[bytes], stellen: list[str],
+                    t: int, n_val: int, tol: int, zeit: int, probe_art: int = 2):
+        self._verfallen(zeit)
+        e = self.vorgemerkt.get(K)
+        if e is None or e["teil"] is None:
+            raise Abgewiesen("Ausgabe S3: Teilmenge nicht gezogen")
+        n = len(e["teil"])
+        kn = self.k_note(K, tol, t, n_val)
+        if kn == 0 or k_je_stelle < kn or 2 * k_je_stelle > n:
+            raise Abgewiesen(f"Ausgabe S3: Pruefgroesse {k_je_stelle}, verlangt {kn}, Stellen {n}")
+        # Die Deckung liegt seit der Vormerkung im Topf: nicht zweimal zahlen.
+        self.topf -= e["deckung"]
+        self.konten[e["von"]] += e["deckung"]
+        try:
+            self.ausgeben(K, n, e["inhaber"], wurzel=e["wurzel"], deckung=e["deckung"], proben=proben, t=t,
+                          n_val=n_val, tol=tol, von=e["von"], stellen=stellen, probe_art=probe_art)
+        except Abgewiesen:
+            self.konten[e["von"]] -= e["deckung"]
+            self.topf += e["deckung"]
+            raise
+        self.token[K]["pulse"] = list(e["teil"])
+        del self.vorgemerkt[K]
+
+
+def selbsttest_s3(soll, abgewiesen):
+    """Der Ablauf ueber eine Leitung: Gutfall und jeder Angriff."""
+    rng = random.Random(2711)
+    k3 = KetteS3()
+    for name in ("aus", "anna", "s0", "s1", "mallory"):
+        k3.konto(name, 10_000, name.encode())
+    k3.leitung("leitung-test", 20, 50_000, 200_000)  # 2 Grad, 5 % frei, gamma 20 %
+    abgewiesen(lambda: k3.leitung("leitung-x", 101, 0, 1), "Leitung mit theta > 10 Grad")
+    abgewiesen(lambda: k3.leitung("satz-x", 0, 0, 1), "Leitung ohne Praefix")
+    K = "ab" * 32
+    w = bytes(32)
+    abgewiesen(lambda: k3.vormerken(K, "aus", "anna", "leitung-fremd", 50_000, w, 1000, 10), "unbekannte Leitung")
+    abgewiesen(lambda: k3.vormerken(K, "aus", "aus", "leitung-test", 100_000, w, 1000, 10), "Ausgeber als Inhaberin")
+    abgewiesen(lambda: k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 10**9, 10), "Deckung fehlt")
+    k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 1000, 10)
+    soll(k3.konten["aus"] == 9000 and k3.topf == 1000, "Deckung bei der Vormerkung im Topf")
+    abgewiesen(lambda: k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 1000, 11), "K doppelt vorgemerkt")
+    abgewiesen(lambda: k3.ausgeben_s3(K, 128, [b"x" * 32] * 2, ["s0", "s1"], 3, 7, 4, 12), "Ausgabe vor dem Ziehen")
+    abgewiesen(lambda: k3.ziehen(K, bytes(32), 20), "Ziehen vor der Meldung")
+    lam = sorted(rng.sample(range(100_000), 20_000))
+    abgewiesen(lambda: k3.melden(K, "mallory", s3_kodieren(lam), 20), "fremde Meldung")
+    abgewiesen(lambda: k3.melden(K, "anna", s3_kodieren(lam), 10), "Meldung im Moment der Vormerkung")
+    abgewiesen(lambda: k3.melden(K, "anna", s3_kodieren(lam[:19_999]), 20), "Meldung unter gamma_det")
+    abgewiesen(lambda: k3.melden(K, "anna", s3_kodieren(lam[:-1] + [100_000]), 20), "Puls ausserhalb N")
+    k3.melden(K, "anna", s3_kodieren(lam), 20)
+    anders = sorted(rng.sample(range(100_000), 20_000))
+    abgewiesen(lambda: k3.melden(K, "anna", s3_kodieren(anders), 21), "zweite, gueltige Meldung (neu wuerfeln)")
+    abgewiesen(lambda: k3.ziehen(K, bytes(32), 20), "Zufall aus der Zeit der Meldung")
+    k3.ziehen(K, bytes(range(32)), 21)
+    abgewiesen(lambda: k3.ziehen(K, bytes(32), 22), "zweites Ziehen")
+    teil = k3.vorgemerkt[K]["teil"]
+    soll(len(teil) == wk.N_MAX and set(teil) <= set(lam), "Teilmenge aus der Meldung, N_MAX Stellen")
+    kn = k3.k_note(K, 4, 3, 7)
+    soll(kn == wk.k_leitung(4, 3, 7, 20, 50_000) and kn > wk.k_note(4, 3, 7), "Pruefgroesse der Leitung ueber der des Chips")
+    proben = [b"p" * 32, b"q" * 32]
+    abgewiesen(lambda: k3.ausgeben_s3(K, kn - 1, proben, ["s0", "s1"], 3, 7, 4, 30), "Pruefgroesse unter der Leitung")
+    abgewiesen(lambda: k3.ausgeben_s3(K, wk.N_MAX // 2 + 1, proben, ["s0", "s1"], 3, 7, 4, 30), "2k > n")
+    abgewiesen(lambda: k3.ausgeben_s3(K, kn, proben, ["s0", "s0"], 3, 7, 4, 30), "Stellen doppelt")
+    soll(k3.konten["aus"] == 9000 and k3.topf == 1000, "abgewiesene Ausgabe zahlt nichts doppelt und nichts zurueck")
+    k3.ausgeben_s3(K, kn, proben, ["s0", "s1"], 3, 7, 4, 30)
+    e = k3.token[K]
+    soll(e["n"] == wk.N_MAX and e["pulse"] == teil and e["wurzel"] == w and e["deckung"] == 1000, "Token ueber die Teilmenge")
+    soll(k3.konten["aus"] == 9000 and k3.topf == 1000 and K not in k3.vorgemerkt, "Deckung genau einmal im Topf")
+    # Verfall: ohne Ausgabe geht die Deckung nach der Frist zurueck.
+    K2 = "cd" * 32
+    k3.vormerken(K2, "aus", "anna", "leitung-test", 50_000, w, 500, 100)
+    soll(k3.konten["aus"] == 8500, "zweite Vormerkung zahlt")
+    k3.vormerken("ef" * 32, "mallory", "anna", "leitung-test", 50_000, w, 1, 100 + S3_FRIST + 1)
+    soll(K2 not in k3.vorgemerkt and k3.konten["aus"] == 9000, "verfallene Vormerkung: Deckung zurueck")
+    abgewiesen(lambda: k3.melden(K2, "anna", s3_kodieren(lam), 100 + S3_FRIST + 2), "Meldung nach dem Verfall")
+    # Grenze der offenen Vormerkungen.
+    k4 = KetteS3()
+    k4.konto("aus", 10**6, b"aus")
+    k4.leitung("leitung-test", 0, 0, 1)
+    for i in range(S3_VORMERKUNGEN_MAX):
+        k4.vormerken(f"{i:064x}", "aus", "anna", "leitung-test", 10, w, 1, 5)
+    abgewiesen(lambda: k4.vormerken("f" * 64, "aus", "anna", "leitung-test", 10, w, 1, 5), "mehr als S3_VORMERKUNGEN_MAX")
+    k4.vormerken("f" * 64, "aus", "anna", "leitung-test", 10, w, 1, 5 + S3_FRIST + 1)
+    soll(len(k4.vorgemerkt) == 1, "nach dem Verfall wieder Platz")
+
 # ---------------------------------------------------------------- Annahmestellen
 def stichproben(n: int, stellen: int, k: int, rng: random.Random) -> list[list[int]]:
     """Disjunkte, geheime Stichproben je Annahmestelle."""
@@ -1360,6 +1534,8 @@ def selbsttest() -> bool:
             fehler.append("zu grosse Stichproben angenommen")
         except ValueError:
             pass
+        # S3: der Ablauf ueber eine Leitung (C2b).
+        selbsttest_s3(soll, abgewiesen)
     except Exception as ex:
         fehler.append(f"Ausnahme: {type(ex).__name__}: {ex}")
     for f in fehler:
