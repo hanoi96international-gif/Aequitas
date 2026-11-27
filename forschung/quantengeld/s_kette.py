@@ -383,6 +383,64 @@ def s3_teilmenge(K: str, lam: list[int], zufall: bytes, meldung_hoehe: int, zufa
     return sorted(rang[:n_max])
 
 
+# Meldung auf der Kette (C2b, WEG_C.md): hoechstens MELDUNG_MAX Pulse, als
+# Luecken kodiert -- erster Wert der Puls selbst, danach Abstand - 1 zum
+# Vorgaenger --, jede Zahl als LEB128 ohne ueberfluessige Gruppen, das Ganze
+# hexadezimal. Genau eine Kodierung je Meldung (sonst zaehlten zwei Texte als
+# verschiedene Meldungen). 65.536 Pulse sind das Vierfache von N_MAX: genug,
+# damit die Teilmenge den Anteil freier Stellen nicht verschiebt; eine
+# Inhaberin misst dafuer ein Fenster von rund 65.536 / gamma_det Pulsen.
+MELDUNG_MAX = 1 << 16
+MELDUNG_HEX_MAX = 2 * 4 * MELDUNG_MAX   # 2^26 Pulse brauchen hoechstens 4 Gruppen
+
+
+def s3_kodieren(lam: list[int]) -> str:
+    if not 1 <= len(lam) <= MELDUNG_MAX or any(b <= a for a, b in zip(lam, lam[1:])) or lam[0] < 0 or lam[-1] >= N_PULS_MAX:
+        raise Abgewiesen("S3-Kodierung: Form")
+    aus = bytearray()
+    vorher = -1
+    for i in lam:
+        g = i - vorher - 1
+        while True:
+            b = g & 0x7F
+            g >>= 7
+            aus.append(b | (0x80 if g else 0))
+            if not g:
+                break
+        vorher = i
+    return aus.hex()
+
+
+def s3_dekodieren(text: str) -> list[int]:
+    """Streng: Groesse vor dem Lesen, Kleinbuchstaben-Hex, keine leere oder
+    ueberlange Gruppe, Pulse < N_PULS_MAX, hoechstens MELDUNG_MAX."""
+    if not isinstance(text, str) or not 2 <= len(text) <= MELDUNG_HEX_MAX or len(text) % 2:
+        raise Abgewiesen("S3-Meldung: Laenge")
+    if any(c not in "0123456789abcdef" for c in text):
+        raise Abgewiesen("S3-Meldung: kein Hex")
+    roh = bytes.fromhex(text)
+    lam: list[int] = []
+    vorher, g, schritt, gruppen = -1, 0, 0, 0
+    for b in roh:
+        g |= (b & 0x7F) << schritt
+        schritt += 7
+        gruppen += 1
+        if b & 0x80:
+            if gruppen == 4:
+                raise Abgewiesen("S3-Meldung: Zahl zu lang")
+            continue
+        if gruppen > 1 and b == 0:
+            raise Abgewiesen("S3-Meldung: Gruppe zu viel")
+        i = vorher + 1 + g
+        if i >= N_PULS_MAX or len(lam) == MELDUNG_MAX:
+            raise Abgewiesen("S3-Meldung: Puls oder Zahl zu gross")
+        lam.append(i)
+        vorher, g, schritt, gruppen = i, 0, 0, 0
+    if gruppen:
+        raise Abgewiesen("S3-Meldung: abgebrochen")
+    return lam
+
+
 # ---------------------------------------------------------------- Annahmestellen
 def stichproben(n: int, stellen: int, k: int, rng: random.Random) -> list[list[int]]:
     """Disjunkte, geheime Stichproben je Annahmestelle."""
@@ -895,6 +953,18 @@ def selbsttest() -> bool:
         soll(t1 == s3_teilmenge(K, list(reversed(lam)), z1, 100, 101, n_max=2048), "Teilmenge haengt von der Reihenfolge ab")
         soll(t1 != s3_teilmenge(K, lam, z2, 100, 101, n_max=2048), "anderer Zufall, gleiche Teilmenge")
         soll(s3_teilmenge(K, lam[:100], z1, 100, 101, n_max=2048) == lam[:100], "kleines Lambda: alles")
+        # Meldung auf der Kette: Kodierung hin und zurueck, genau eine Form.
+        soll(s3_dekodieren(s3_kodieren(lam)) == lam, "Kodierung nicht umkehrbar")
+        soll(s3_dekodieren(s3_kodieren([N_PULS_MAX - 1])) == [N_PULS_MAX - 1], "groesster Puls")
+        abgewiesen(lambda: s3_dekodieren("8000"), "Gruppe zu viel (ueberfluessige Null)")
+        abgewiesen(lambda: s3_dekodieren("80"), "abgebrochene Zahl")
+        abgewiesen(lambda: s3_dekodieren("ffffffff01"), "fuenf Gruppen")
+        abgewiesen(lambda: s3_dekodieren("80808020"), "Puls >= N_PULS_MAX")
+        abgewiesen(lambda: s3_dekodieren("0A"), "Grossbuchstaben")
+        abgewiesen(lambda: s3_dekodieren("00" * (MELDUNG_MAX + 1)), "mehr als MELDUNG_MAX Pulse")
+        abgewiesen(lambda: s3_dekodieren(""), "leer")
+        abgewiesen(lambda: s3_kodieren([3, 3]), "doppelter Puls kodiert")
+        abgewiesen(lambda: s3_kodieren(list(range(MELDUNG_MAX + 1))), "zu lange Meldung kodiert")
         # Missbrauch: eine Betruegerin meldet alle 700 Mehrphotonen-Pulse plus 3000
         # andere (Anteil frei 19 %). Die Teilmenge, gezogen NACH der Meldung, hat
         # denselben Anteil (Abweichung im Bereich weniger Standardabweichungen) --
@@ -1412,8 +1482,28 @@ def vektor_s3() -> dict:
     }
 
 
+def vektor_s3_meldung() -> dict:
+    """Pruefvektor der Kodierung (Knoten: quanten_s3_meldung.go)."""
+    rng = random.Random(2611)
+    lam = sorted(rng.sample(range(N_PULS_MAX), 300))
+    gut = [[0], [N_PULS_MAX - 1], [0, 1, 2], [127, 128, 16511], lam, list(range(MELDUNG_MAX))[-5:]]
+    schlecht = ["", "8000", "80", "ffffffff01", "80808020", "0A", "0", "zz", "00" * (MELDUNG_MAX + 1), "7f00ff7f"]
+    aus = []
+    for t in schlecht:
+        try:
+            s3_dekodieren(t)
+            ok = True
+        except Abgewiesen:
+            ok = False
+        aus.append({"text": t if len(t) < 64 else f"00*{len(t) // 2}", "ok": ok})
+    return {"gut": [{"lambda": g, "text": s3_kodieren(g)} for g in gut], "schlecht": aus}
+
+
 if __name__ == "__main__":
-    if "--vektor-s3" in sys.argv:
+    if "--vektor-s3-meldung" in sys.argv:
+        import json
+        print(json.dumps(vektor_s3_meldung(), indent=1))
+    elif "--vektor-s3" in sys.argv:
         import json
         print(json.dumps(vektor_s3(), indent=1))
     elif "--vektor-probe-v2" in sys.argv:
