@@ -7,7 +7,16 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~09:45 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
+**Stand 27.11. ~11:00 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
+- Gemergt: #687 (bbd7d3c8, C2b-1 Meldung und Teilmenge, nur Rechnung), **#688 (51b15dfe, Befund und Abhilfe):**
+  seit dem Stichtag der Pfänder (09:00 UTC) nahm die Kette keine Bindung mit Pfandgeber an (`pfand_von` fehlte in
+  `quantenWKonten`, Annahme wies als „wiederholen“ ab) -- App ab 1.32.0 und Werkzeuge betroffen. Jetzt gesperrt und
+  geladen; Ausgabe-Werkzeug gibt das Pfand selbst, Inhaberin-Werkzeug mit `--pfandgeber-variable`.
+  **Deploy nach #688 gelaufen (13:05 UTC, grün): Bindungen mit Pfandgeber gehen wieder.** Vier-Knoten-Tests laufen in echter Zeit: S-Tests pinnen die Pfänder,
+  `TestVierKnotenQuantenSPfand_RealDB` läuft mit aktiven Pfändern.
+- Nächster Code-Schritt **C2b-2** (Transaktion „Meldung“ und Token-Art „Leitung“, schlafend).
+
+**Stand 27.11. ~09:45 UTC (überholt)** (Sitzung „Quantengeld Revolution“):
 - **App v1.33.0 veröffentlicht** (09:37 UTC, Release-Schlüssel 473e9de3…). Deploy nach #686 (Run 45958681305) grün.
 - App #150 gemergt (8b4b5018): Release ohne zweite Freigabe (Entscheidung des Betreibers 27.11.). Nur das Signieren
   braucht den Betreiber; `scripts/release_lauf_pruefen.sh` prüft Herkunft, Signieren und „neuer als das neueste
