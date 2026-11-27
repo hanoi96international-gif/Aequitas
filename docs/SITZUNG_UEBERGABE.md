@@ -12,7 +12,7 @@ dezentrales Quantengeld“.
   seit dem Stichtag der Pfänder (09:00 UTC) nahm die Kette keine Bindung mit Pfandgeber an (`pfand_von` fehlte in
   `quantenWKonten`, Annahme wies als „wiederholen“ ab) -- App ab 1.32.0 und Werkzeuge betroffen. Jetzt gesperrt und
   geladen; Ausgabe-Werkzeug gibt das Pfand selbst, Inhaberin-Werkzeug mit `--pfandgeber-variable`.
-  **Deploy nach #688 freigeben (dringend).** Vier-Knoten-Tests laufen in echter Zeit: S-Tests pinnen die Pfänder,
+  **Deploy nach #688 gelaufen (13:05 UTC, grün): Bindungen mit Pfandgeber gehen wieder.** Vier-Knoten-Tests laufen in echter Zeit: S-Tests pinnen die Pfänder,
   `TestVierKnotenQuantenSPfand_RealDB` läuft mit aktiven Pfändern.
 - Nächster Code-Schritt **C2b-2** (Transaktion „Meldung“ und Token-Art „Leitung“, schlafend).
 
