@@ -16,7 +16,8 @@ import (
 
 const (
 	s3AN    = 20_000 // Pulse der Vormerkung
-	s3AMeld = 4_000  // gemeldet (gamma 20 %); <= quantenWNMax, also teil = Meldung
+	s3ASend = 5      // Sender = Validatoren der Welt (je ein Abschnitt von 4.000 Pulsen)
+	s3AMeld = 4_500  // gemeldet: je Abschnitt 900 (gamma 20 % verlangt 800); teil = Meldung
 	s3AK    = 32     // Pruefgroesse im Ablauf (quantenSKLeitungOverride)
 	s3AProb = 40     // Stellen je Stichprobe
 )
@@ -32,16 +33,30 @@ type s3AWelt struct {
 func neueS3AWelt(t *testing.T) *s3AWelt {
 	t.Helper()
 	w := &s3AWelt{s3Welt: neueS3WeltN(t, s3AN)}
-	w.wurzel = hex.EncodeToString(w.p.wurzel[:])
+	w.wurzel, w.sender = hex.EncodeToString(w.p.wurzel[:]), s3ASend
 	quantenSKLeitungOverride.Store(s3AK)
 	t.Cleanup(func() { quantenSKLeitungOverride.Store(0) })
-	w.bisGezogenN(s3Lambda(11, s3AN, s3AMeld))
+	w.bisGezogenN(s3LambdaJe(11, s3AN, s3ASend, s3AMeld/s3ASend))
 	w.teil = slices.Clone(w.vs(w.cs, w.p.K).Teil)
 	if len(w.teil) != s3AMeld {
 		t.Fatalf("Teilmenge %d", len(w.teil))
 	}
 	w.stellenVorbereiten(s3AProb)
 	return w
+}
+
+// s3LambdaJe: je Abschnitt von v Sendern genau je zufaellige Pulse.
+func s3LambdaJe(seed int64, n, v, je int) []int {
+	rng := rand.New(rand.NewSource(seed))
+	var lam []int
+	for x := 1; x <= v; x++ {
+		von, bis, _ := quantenS3AbschnittPulse(n, v, x)
+		for _, p := range rng.Perm(bis - von)[:je] {
+			lam = append(lam, von+p)
+		}
+	}
+	sort.Ints(lam)
+	return lam
 }
 
 // bisGezogenN: wie bisGezogen, mit N = Pulse der Praegung.
@@ -239,10 +254,10 @@ func TestQuantenS3Ausgabe_VorDemStichtag(t *testing.T) {
 // Vor dem Ziehen keine Ausgabe.
 func TestQuantenS3Ausgabe_VorDemZiehen(t *testing.T) {
 	w := &s3AWelt{s3Welt: neueS3WeltN(t, s3AN)}
-	w.wurzel = hex.EncodeToString(w.p.wurzel[:])
+	w.wurzel, w.sender = hex.EncodeToString(w.p.wurzel[:]), s3ASend
 	quantenSKLeitungOverride.Store(s3AK)
 	t.Cleanup(func() { quantenSKLeitungOverride.Store(0) })
-	lam := s3Lambda(12, s3AN, s3AMeld)
+	lam := s3LambdaJe(12, s3AN, s3ASend, s3AMeld/s3ASend)
 	w.annehmen(w.vormerkenTx(w.praeger, w.keys[w.praeger], w.p.K, w.anna, s3AN, s3Deckung, w.z), w.z)
 	w.annehmen(w.meldenTx(w.anna, w.keys[w.anna], w.p.K, s3Text(t, lam)), w.z+10)
 	w.teil = lam

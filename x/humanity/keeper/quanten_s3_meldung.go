@@ -146,6 +146,95 @@ func quantenS3Teilmenge(K string, lam []int, zufall []byte, meldungHoehe, zufall
 	if len(zufall) != 32 || nMax < 1 || nMax > quantenWNMax || len(lam) > quantenS3MeldungMax {
 		return nil, quantenS3Fehler("Teilmenge: Form")
 	}
+	aus := quantenS3Rang(K, lam, zufall, nMax)
+	sort.Ints(aus)
+	return aus, nil
+}
+
+// MEHRERE SENDER (C2b-2b-4, s_kette.s3_abschnitt_pulse, WEG_C.md
+// „Designfrage“): Sender x (1..v) schickt die Pulse [(x-1) N/v, x N/v). Wer
+// einen Sender bedient, kennt die Werte seines Abschnitts. ANGRIFF ohne
+// Abschnitte: Die Inhaberin weiss, welcher Puls von welchem Sender kommt; im
+// Bund mit einem Sender meldete sie bevorzugt dessen Pulse, und der Token
+// bestuende fast nur aus Stellen, die die Faelscherseite kennt. Darum meldet
+// JEDER Abschnitt fuer sich mindestens gamma_det seiner Pulse, und die
+// Teilmenge zieht aus jedem Abschnitt GLEICH viele. Mit v = 1 genau wie bisher.
+
+// quantenS3AbschnittPulse: [von, bis) der Pulse von Sender x (1-basiert).
+func quantenS3AbschnittPulse(nPuls, v, x int) (von, bis int, ok bool) {
+	if v < 1 || v > quantenWVMax || x < 1 || x > v || nPuls < v || nPuls > quantenS3PulsMax {
+		return 0, 0, false
+	}
+	return (x - 1) * nPuls / v, x * nPuls / v, true
+}
+
+// quantenS3MeldungPruefenAbschnitte wie s_kette.s3_meldung_abschnitte.
+func quantenS3MeldungPruefenAbschnitte(nPuls, gammaDetPpm int, lam []int, v int) error {
+	if err := quantenS3MeldungPruefen(nPuls, gammaDetPpm, lam); err != nil {
+		return err
+	}
+	j := 0
+	for x := 1; x <= v; x++ {
+		von, bis, ok := quantenS3AbschnittPulse(nPuls, v, x)
+		if !ok {
+			return quantenS3Fehler("Meldung: Abschnitt %d von %d", x, v)
+		}
+		zahl := 0
+		for ; j < len(lam) && lam[j] < bis; j++ { // lam aufsteigend (geprueft)
+			if lam[j] >= von {
+				zahl++
+			}
+		}
+		if int64(zahl)*1_000_000 < int64(gammaDetPpm)*int64(bis-von) {
+			return quantenS3Fehler("Meldung: Abschnitt %d mit %d von %d Pulsen unter gamma_det", x, zahl, bis-von)
+		}
+	}
+	return nil
+}
+
+// quantenS3TeilmengeAbschnitte wie s_kette.s3_teilmenge_abschnitte: aus jedem
+// Abschnitt je = min(kleinste Zahl gemeldeter Pulse eines Abschnitts,
+// nMax / v) Pulse, je Abschnitt nach demselben Rang wie quantenS3Teilmenge.
+// Aufsteigend; Stelle (x-1)·je .. x·je-1 des Tokens liegt im Abschnitt von
+// Sender x. lam aufsteigend und verschieden (wie die Kodierung liefert).
+func quantenS3TeilmengeAbschnitte(K string, lam []int, zufall []byte, meldungHoehe, zufallHoehe int64, nPuls, v, nMax int) ([]int, error) {
+	if zufallHoehe <= meldungHoehe {
+		return nil, quantenS3Fehler("Teilmenge: Zufall nicht nach der Meldung")
+	}
+	if len(zufall) != 32 || nMax < 1 || nMax > quantenWNMax || v < 1 || v > nMax || len(lam) > quantenS3MeldungMax {
+		return nil, quantenS3Fehler("Teilmenge: Form")
+	}
+	teile := make([][]int, v)
+	j := 0
+	for x := 1; x <= v; x++ {
+		von, bis, ok := quantenS3AbschnittPulse(nPuls, v, x)
+		if !ok {
+			return nil, quantenS3Fehler("Teilmenge: Abschnitt %d von %d", x, v)
+		}
+		for ; j < len(lam) && lam[j] < bis; j++ {
+			if lam[j] >= von {
+				teile[x-1] = append(teile[x-1], lam[j])
+			}
+		}
+	}
+	je := nMax / v
+	for _, t := range teile {
+		je = min(je, len(t))
+	}
+	if je < 1 {
+		return nil, quantenS3Fehler("Teilmenge: ein Abschnitt ohne gemeldeten Puls")
+	}
+	aus := make([]int, 0, je*v)
+	for _, t := range teile {
+		aus = append(aus, quantenS3Rang(K, t, zufall, je)...)
+	}
+	sort.Ints(aus)
+	return aus, nil
+}
+
+// quantenS3Rang: die nMax Pulse mit den kleinsten SHA-256(dom|K|"|"|zufall|"|"|i)
+// (Gleichstand: kleinerer Puls), unsortiert.
+func quantenS3Rang(K string, lam []int, zufall []byte, nMax int) []int {
 	type rang struct {
 		i int
 		h [32]byte
@@ -175,6 +264,5 @@ func quantenS3Teilmenge(K string, lam []int, zufall []byte, meldungHoehe, zufall
 	for j := range r {
 		aus[j] = r[j].i
 	}
-	sort.Ints(aus)
-	return aus, nil
+	return aus
 }

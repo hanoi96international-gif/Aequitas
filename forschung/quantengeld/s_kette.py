@@ -388,6 +388,128 @@ def s3_teilmenge(K: str, lam: list[int], zufall: bytes, meldung_hoehe: int, zufa
     return sorted(rang[:n_max])
 
 
+# Mehrere Sender (C2b-2b-4, WEG_C.md „Designfrage“): Sender x (1..v) schickt
+# die Pulse seines Abschnitts [(x-1) N / v, x N / v). Wer einen Sender bedient,
+# kennt die Werte seines Abschnitts -- eine Absprache von t-1 Sendern kennt den
+# Anteil (t-1)/v, den die Pruefgroesse einrechnet. ANGRIFF ohne Abschnitte: Die
+# Inhaberin weiss, welcher Puls von welchem Sender kommt. Im Bund mit einem
+# Sender meldete sie bevorzugt dessen Pulse, und der Token bestuende fast nur
+# aus Stellen, die die Faelscherseite kennt. Darum (1) muss JEDER Abschnitt fuer
+# sich mindestens gamma_det seiner Pulse melden und (2) zieht die Teilmenge aus
+# jedem Abschnitt GLEICH viele Pulse. Mit v = 1 ist beides genau wie bisher.
+
+
+def s3_abschnitt_pulse(n_puls: int, v: int, x: int) -> tuple[int, int]:
+    """[von, bis) der Pulse von Sender x (1-basiert)."""
+    if not (1 <= v <= wk.V_MAX and 1 <= x <= v and v <= n_puls <= N_PULS_MAX):
+        raise Abgewiesen("S3-Abschnitt: Form")
+    return (x - 1) * n_puls // v, x * n_puls // v
+
+
+def s3_meldung_abschnitte(n_puls: int, gamma_det_ppm: int, meldung: list[int], v: int) -> list[int]:
+    """s3_meldung, dazu je Abschnitt mindestens gamma_det seiner Pulse."""
+    lam = s3_meldung(n_puls, gamma_det_ppm, meldung)
+    for x in range(1, v + 1):
+        von, bis = s3_abschnitt_pulse(n_puls, v, x)
+        zahl = sum(1 for i in lam if von <= i < bis)
+        if zahl * 1_000_000 < gamma_det_ppm * (bis - von):
+            raise Abgewiesen(f"S3-Meldung: Abschnitt {x} mit {zahl} von {bis - von} Pulsen unter gamma_det")
+    return lam
+
+
+def s3_teilmenge_abschnitte(K: str, lam: list[int], zufall: bytes, meldung_hoehe: int, zufall_hoehe: int,
+                            n_puls: int, v: int, n_max: int = wk.N_MAX) -> list[int]:
+    """Aus jedem Abschnitt gleich viele Pulse (je = min(kleinste Zahl
+    gemeldeter Pulse eines Abschnitts, n_max // v)), je Abschnitt die mit den
+    kleinsten h(dom|K|zufall|i) wie s3_teilmenge. Aufsteigend sortiert; Stelle
+    (x-1)·je .. x·je-1 des Tokens liegt damit im Abschnitt von Sender x. Mit
+    v = 1 genau s3_teilmenge."""
+    if zufall_hoehe <= meldung_hoehe:
+        raise Abgewiesen("S3-Teilmenge: Zufall nicht nach der Meldung")
+    if len(zufall) != 32 or not 1 <= n_max <= wk.N_MAX or not 1 <= v <= n_max:
+        raise Abgewiesen("S3-Teilmenge: Form")
+    teile = []
+    for x in range(1, v + 1):
+        von, bis = s3_abschnitt_pulse(n_puls, v, x)
+        teile.append([i for i in lam if von <= i < bis])
+    je = min(min(len(t) for t in teile), n_max // v)
+    if je < 1:
+        raise Abgewiesen("S3-Teilmenge: ein Abschnitt ohne gemeldeten Puls")
+    aus = []
+    for t in teile:
+        rang = sorted(t, key=lambda i: wk.h(DOM_S3_TEIL, K.encode(), b"|", zufall, b"|", str(i).encode()))
+        aus.extend(rang[:je])
+    return sorted(aus)
+
+
+
+# Mehrfach-Beweis (C2b-2b-3c Teil 2, WEG_C.md): Ueber eine Leitung geht die
+# Wurzel ueber ALLE N Pulse (bis 2^26). Eine Annahmestelle braucht aber nur die
+# n Blaetter des Tokens (Stelle j = Puls teil[j]). Sie bekommt diese Blaetter
+# und EINEN Beweis, dass sie an genau diesen Pulsen in der Wurzel stehen --
+# oeffentlich (die Blaetter sind Pruefsummen mit Salz), verraet also ihre
+# geheime Stichprobe nicht. Form: Ebene fuer Ebene, Knoten aufsteigend, je
+# fehlendem Nachbarn ein Hash; das verdoppelte letzte Blatt einer ungeraden
+# Ebene (wie merkle_wurzel) braucht keinen. Genau eine Form je (N, Indizes).
+BEWEIS_MAX = 1 << 21   # Hashes hoechstens (n <= N_MAX, Tiefe <= 26: weit darunter)
+
+
+def s3_mehrfachbeweis(blaetter: list[bytes], idx: list[int]) -> list[bytes]:
+    """Beweis fuer die Blaetter an den (aufsteigenden, verschiedenen) Indizes."""
+    n = len(blaetter)
+    if not idx or any(b <= a for a, b in zip(idx, idx[1:])) or idx[0] < 0 or idx[-1] >= n:
+        raise Abgewiesen("Mehrfachbeweis: Indizes")
+    beweis: list[bytes] = []
+    ebene = list(blaetter)
+    bekannt = list(idx)
+    while len(ebene) > 1:
+        groesse = len(ebene)
+        if groesse % 2:
+            ebene.append(ebene[-1])
+        menge = set(bekannt)
+        eltern = []
+        for i in bekannt:
+            s_ = i ^ 1
+            if s_ in menge:
+                if i % 2 == 0:
+                    eltern.append(i // 2)
+                continue
+            if s_ < groesse:
+                beweis.append(ebene[s_])
+            eltern.append(i // 2)
+        ebene = [wk.h(b"\x01", ebene[j], ebene[j + 1]) for j in range(0, len(ebene), 2)]
+        bekannt = sorted(set(eltern))
+    return beweis
+
+
+def s3_mehrfach_pruefen(wurzel: bytes, n: int, idx: list[int], blaetter: list[bytes], beweis: list[bytes]) -> bool:
+    """Streng: genau die Hashes des Beweises, keiner zu viel oder zu wenig."""
+    if not (1 <= n <= N_PULS_MAX) or not idx or len(idx) != len(blaetter) or len(beweis) > BEWEIS_MAX:
+        return False
+    if any(b <= a for a, b in zip(idx, idx[1:])) or idx[0] < 0 or idx[-1] >= n:
+        return False
+    knoten = dict(zip(idx, blaetter))
+    groesse, z = n, 0
+    while groesse > 1:
+        neu = {}
+        for i in sorted(knoten):
+            s_ = i ^ 1
+            if s_ in knoten:
+                if i % 2 == 0:
+                    neu[i // 2] = wk.h(b"\x01", knoten[i], knoten[s_])
+                continue
+            if s_ < groesse:
+                if z >= len(beweis):
+                    return False
+                nachbar = beweis[z]
+                z += 1
+            else:
+                nachbar = knoten[i]          # verdoppeltes letztes Blatt
+            links, rechts = (knoten[i], nachbar) if i % 2 == 0 else (nachbar, knoten[i])
+            neu[i // 2] = wk.h(b"\x01", links, rechts)
+        knoten, groesse = neu, (groesse + 1) // 2
+    return z == len(beweis) and knoten.get(0) == wurzel
+
 # Meldung auf der Kette (C2b, WEG_C.md): hoechstens MELDUNG_MAX Pulse, als
 # Luecken kodiert -- erster Wert der Puls selbst, danach Abstand - 1 zum
 # Vorgaenger --, jede Zahl als LEB128 ohne ueberfluessige Gruppen, das Ganze
@@ -520,13 +642,15 @@ class KetteS3(KetteS):
         return zeit > e["zeit"] + S3_FRIST
 
     def vormerken(self, K: str, von: str, inhaber: str, leitung: str, n_puls: int, wurzel: bytes,
-                  deckung: int, zeit: int):
+                  deckung: int, zeit: int, sender: int = 1):
         if K in self.token or K in self.vorgemerkt:
             raise Abgewiesen("Vormerken: K schon da")
         if leitung not in self.leitungen:
             raise Abgewiesen("Vormerken: Leitung nicht eingetragen")
         if not (1 <= n_puls <= N_PULS_MAX) or len(wurzel) != 32 or deckung <= 0 or inhaber == von:
             raise Abgewiesen("Vormerken: Form")
+        if not 1 <= sender <= min(wk.V_MAX, n_puls):
+            raise Abgewiesen("Vormerken: Zahl der Sender")
         if any(e["von"] == von for e in self.vorgemerkt.values()):
             raise Abgewiesen("Vormerken: Ausgeber hat schon eine offene Vormerkung")
         if len(self.vorgemerkt) >= S3_VORMERKUNGEN_MAX:
@@ -538,7 +662,7 @@ class KetteS3(KetteS):
         self.topf += deckung
         self.pfaender += pfand
         self.vorgemerkt[K] = {"von": von, "inhaber": inhaber, "leitung": dict(self.leitungen[leitung]),
-                              "n_puls": n_puls, "wurzel": wurzel, "deckung": deckung, "pfand": pfand, "zeit": zeit,
+                              "n_puls": n_puls, "wurzel": wurzel, "deckung": deckung, "pfand": pfand, "zeit": zeit, "sender": sender,
                               "meldung": None, "gemeldet": 0, "meldung_zeit": None, "teil": None}
 
     def melden(self, K: str, von: str, text: str, zeit: int):
@@ -553,7 +677,7 @@ class KetteS3(KetteS):
             raise Abgewiesen("Melden: nicht nach der Vormerkung")
         if len(text) > S3_MELDUNG_TX_HEX_MAX:
             raise Abgewiesen("Melden: Meldung zu lang fuer eine Transaktion")
-        lam = s3_meldung(e["n_puls"], e["leitung"]["gamma"], s3_dekodieren(text))
+        lam = s3_meldung_abschnitte(e["n_puls"], e["leitung"]["gamma"], s3_dekodieren(text), e["sender"])
         e["meldung"], e["gemeldet"], e["meldung_zeit"] = hashlib.sha256(text.encode()).digest(), len(lam), zeit
 
     def ziehen(self, K: str, text: str, zufall: bytes, zufall_zeit: int):
@@ -568,7 +692,8 @@ class KetteS3(KetteS):
             raise Abgewiesen("Ziehen: nicht die gemeldete Meldung")
         if zufall_zeit < e["meldung_zeit"] + S3_ZIEH_ABSTAND:
             raise Abgewiesen("Ziehen: Zufall zu nah an der Meldung")
-        e["teil"] = s3_teilmenge(K, s3_dekodieren(text), zufall, e["meldung_zeit"], zufall_zeit)
+        e["teil"] = s3_teilmenge_abschnitte(K, s3_dekodieren(text), zufall, e["meldung_zeit"], zufall_zeit,
+                                            e["n_puls"], e["sender"])
 
     def frist(self, K: str, zeit: int):
         e = self.vorgemerkt.get(K)
@@ -598,6 +723,8 @@ class KetteS3(KetteS):
         if self._verfallen(e, zeit):
             raise Abgewiesen("Ausgabe S3: Vormerkung verfallen")
         n = len(e["teil"])
+        if n_val != e["sender"]:
+            raise Abgewiesen(f"Ausgabe S3: {n_val} Validatoren, vorgemerkt {e['sender']} Sender")
         kn = self.k_note(K, tol, t, n_val)
         if kn == 0 or 2 * kn > n:
             raise Abgewiesen(f"Ausgabe S3: Pruefgroesse {kn} der Leitung bei {n} Stellen")
@@ -634,7 +761,7 @@ def selbsttest_s3(soll, abgewiesen):
     abgewiesen(lambda: k3.vormerken(K, "aus", "anna", "leitung-fremd", 50_000, w, 1000, 10), "unbekannte Leitung")
     abgewiesen(lambda: k3.vormerken(K, "aus", "aus", "leitung-test", 100_000, w, 1000, 10), "Ausgeber als Inhaberin")
     abgewiesen(lambda: k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 10**9, 10), "Deckung fehlt")
-    k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 1000, 10)
+    k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 1000, 10, sender=7)  # 7 Sender, je ein Abschnitt
     soll(k3.konten["aus"] == START - 1000 - P and k3.topf == 1000 and k3.pfaender == P, "Deckung und Pfand bei der Vormerkung")
     abgewiesen(lambda: k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 1000, 11), "K doppelt vorgemerkt")
     abgewiesen(lambda: k3.vormerken("cd" * 32, "aus", "anna", "leitung-test", 100_000, w, 1000, 11),
@@ -643,7 +770,8 @@ def selbsttest_s3(soll, abgewiesen):
     k3.leitung("leitung-test", 20, 50_000, 1)
     soll(k3.vorgemerkt[K]["leitung"]["gamma"] == 200_000, "Vormerkung haelt gamma fest")
     abgewiesen(lambda: k3.ausgeben_s3(K, [b"x" * 32] * 2, ["s0", "s1"], 3, 7, 4, 12), "Ausgabe vor dem Ziehen")
-    lam = sorted(rng.sample(range(100_000), 20_000))
+    # je Abschnitt 2.860 Pulse (gamma 20 % verlangt 2.857 von 14.285/14.286)
+    lam = sorted(p for x in range(1, 8) for p in rng.sample(range(*s3_abschnitt_pulse(100_000, 7, x)), 2_860))
     text = s3_kodieren(lam)
     abgewiesen(lambda: k3.ziehen(K, text, bytes(32), 20 + S3_ZIEH_ABSTAND), "Ziehen vor der Meldung")
     abgewiesen(lambda: k3.melden(K, "mallory", text, 20), "fremde Meldung")
@@ -660,7 +788,7 @@ def selbsttest_s3(soll, abgewiesen):
          "gueltige Meldung, laenger als eine Transaktion")
     abgewiesen(lambda: k3.melden(K, "anna", lang, 20), "Meldung zu lang fuer eine Transaktion")
     k3.melden(K, "anna", text, 20)
-    soll(k3.vorgemerkt[K]["gemeldet"] == 20_000, "Zahl der gemeldeten Pulse")
+    soll(k3.vorgemerkt[K]["gemeldet"] == len(lam) == 20_020, "Zahl der gemeldeten Pulse")
     anders = s3_kodieren(sorted(rng.sample(range(100_000), 20_000)))
     abgewiesen(lambda: k3.melden(K, "anna", anders, 21), "zweite, gueltige Meldung (neu wuerfeln)")
     abgewiesen(lambda: k3.ziehen(K, text, bytes(32), 20), "Zufall aus der Zeit der Meldung")
@@ -669,8 +797,8 @@ def selbsttest_s3(soll, abgewiesen):
     k3.ziehen(K, text, bytes(range(32)), 20 + S3_ZIEH_ABSTAND)
     abgewiesen(lambda: k3.ziehen(K, text, bytes(32), 22 + S3_ZIEH_ABSTAND), "zweites Ziehen")
     teil = k3.vorgemerkt[K]["teil"]
-    soll(len(teil) == wk.N_MAX and set(teil) <= set(lam), "Teilmenge aus der Meldung, N_MAX Stellen")
-    soll(teil == s3_teilmenge(K, lam, bytes(range(32)), 20, 20 + S3_ZIEH_ABSTAND), "Teilmenge wie s3_teilmenge")
+    soll(len(teil) == 7 * (wk.N_MAX // 7) and set(teil) <= set(lam), "Teilmenge aus der Meldung, je Sender N_MAX // 7")
+    soll(teil == s3_teilmenge_abschnitte(K, lam, bytes(range(32)), 20, 20 + S3_ZIEH_ABSTAND, 100_000, 7), "Teilmenge je Abschnitt")
     abgewiesen(lambda: k3.frist(K, 10 + S3_FRIST), "Frist vor dem Verfall")
     kn = k3.k_note(K, 4, 3, 7)
     soll(kn == wk.k_leitung(4, 3, 7, 20, 50_000) and kn > wk.k_note(4, 3, 7), "Pruefgroesse der Leitung ueber der des Chips")
@@ -681,7 +809,7 @@ def selbsttest_s3(soll, abgewiesen):
     soll(k3.konten["aus"] == START - 1000 - P and k3.topf == 1000, "abgewiesene Ausgabe zahlt nichts doppelt und nichts zurueck")
     k3.ausgeben_s3(K, proben, ["s0", "s1"], 3, 7, 4, 30)
     e = k3.token[K]
-    soll(e["n"] == wk.N_MAX and e["pulse"] == teil and e["wurzel"] == w and e["deckung"] == 1000, "Token ueber die Teilmenge")
+    soll(e["n"] == len(teil) and e["pulse"] == teil and e["wurzel"] == w and e["deckung"] == 1000, "Token ueber die Teilmenge")
     soll(k3.konten["aus"] == START - 1000 and k3.topf == 1000 and k3.pfaender == 0 and K not in k3.vorgemerkt,
          "Deckung genau einmal im Topf, Pfand zurueck")
     # Verfall: ohne Ausgabe geht die Deckung mit der Frist zurueck, erst dann
@@ -765,6 +893,58 @@ def selbsttest_s3(soll, abgewiesen):
     for ab in range(0, kn5, wk.OFFEN_TEIL):
         r5 = k5.offenlegen(K5, ab, ehrlich[ab:ab + wk.OFFEN_TEIL], 41)
     soll(r5 is True and e5["eingeloest"] and k5.konten["s1"] == START + 1000, "Einloesen ueber die Pulse der Leitung")
+
+    # C2b-2b-3c Teil 2: Mehrfach-Beweis fuer die Blaetter des Tokens.
+    for n_b in (1, 2, 3, 6, 7, 1000, 1025):
+        bl = [wk.pruefsumme(K5, i, rng.getrandbits(126)) for i in range(n_b)]
+        w_b = wk.merkle_wurzel(bl)
+        for idx in ([0], [n_b - 1], sorted(set(rng.sample(range(n_b), min(n_b, 9)))), list(range(n_b))):
+            bw = s3_mehrfachbeweis(bl, idx)
+            soll(s3_mehrfach_pruefen(w_b, n_b, idx, [bl[i] for i in idx], bw), f"Mehrfachbeweis n {n_b}, {len(idx)} Blaetter")
+            if len(idx) == 1:
+                soll(len(bw) <= len(wk.merkle_pfad(bl, idx[0])), "ein Blatt: hoechstens der einfache Pfad")
+    bl = [wk.pruefsumme(K5, i, rng.getrandbits(126)) for i in range(1000)]
+    w_b, idx = wk.merkle_wurzel(bl), [3, 500, 999]
+    bw = s3_mehrfachbeweis(bl, idx)
+    gut_b = [bl[i] for i in idx]
+    soll(not s3_mehrfach_pruefen(w_b, 1000, idx, gut_b, bw[:-1]), "Beweis: ein Hash zu wenig")
+    soll(not s3_mehrfach_pruefen(w_b, 1000, idx, gut_b, bw + [bw[0]]), "Beweis: ein Hash zu viel")
+    soll(not s3_mehrfach_pruefen(w_b, 1000, idx, gut_b, [bytes(32)] + bw[1:]), "Beweis: Hash vertauscht")
+    soll(not s3_mehrfach_pruefen(w_b, 1000, [3, 501, 999], gut_b, bw), "Beweis: anderer Index")
+    soll(not s3_mehrfach_pruefen(w_b, 1000, [500, 3, 999], [gut_b[1], gut_b[0], gut_b[2]], bw), "Beweis: Indizes nicht aufsteigend")
+    soll(not s3_mehrfach_pruefen(w_b, 1001, idx, gut_b, bw), "Beweis: anderes N")
+    soll(not s3_mehrfach_pruefen(w_b, 1000, idx, [bl[4], gut_b[1], gut_b[2]], bw), "Beweis: falsches Blatt")
+
+    # C2b-2b-4: mehrere Sender. Mit v = 1 genau die bisherige Teilmenge.
+    lam6 = sorted(rng.sample(range(3000), 900))
+    z6 = bytes(range(32, 64))
+    soll(s3_teilmenge_abschnitte(K5, lam6, z6, 1, 2, 3000, 1, 500) == s3_teilmenge(K5, lam6, z6, 1, 2, 500),
+         "ein Sender: Teilmenge wie bisher")
+    t6 = s3_teilmenge_abschnitte(K5, lam6, z6, 1, 2, 3000, 3, 600)
+    je6 = [sum(1 for i in t6 if von <= i < bis) for von, bis in (s3_abschnitt_pulse(3000, 3, x) for x in (1, 2, 3))]
+    soll(je6 == [200, 200, 200] and len(set(t6)) == 600 and set(t6) <= set(lam6), "drei Sender: je Abschnitt gleich viele")
+    # Angriff: die Inhaberin meldet fast nur Pulse der Sender 1 und 3 (im Bund).
+    schief = [i for i in lam6 if i < 1000 or i >= 2000] + [i for i in lam6 if 1000 <= i < 2000][:5]
+    abgewiesen(lambda: s3_meldung_abschnitte(3000, 200_000, schief, 3), "Abschnitt eines ehrlichen Senders kaum gemeldet")
+    soll(s3_meldung_abschnitte(3000, 200_000, schief, 1) == sorted(schief), "mit einem Sender zaehlt nur die Summe")
+    t_schief = s3_teilmenge_abschnitte(K5, schief, z6, 1, 2, 3000, 3, wk.N_MAX)
+    soll(len(t_schief) == 15, "schiefe Meldung: die Teilmenge richtet sich nach dem kleinsten Abschnitt")
+    abgewiesen(lambda: s3_abschnitt_pulse(2, 3, 1), "mehr Sender als Pulse")
+    k6 = KetteS3()
+    for name in ("aus", "anna", "s0", "s1"):
+        k6.konto(name, START, name.encode())
+    k6.leitung("leitung-test", 20, 50_000, 200_000)
+    K6 = "6e" * 32
+    abgewiesen(lambda: k6.vormerken(K6, "aus", "anna", "leitung-test", 3000, w, 1000, 10, sender=0), "null Sender")
+    abgewiesen(lambda: k6.vormerken(K6, "aus", "anna", "leitung-test", 3000, w, 1000, 10, sender=wk.V_MAX + 1), "zu viele Sender")
+    k6.vormerken(K6, "aus", "anna", "leitung-test", 3000, w, 1000, 10, sender=3)
+    abgewiesen(lambda: k6.melden(K6, "anna", s3_kodieren(schief), 20), "schiefe Meldung auf der Kette")
+    k6.melden(K6, "anna", s3_kodieren(lam6), 20)
+    k6.ziehen(K6, s3_kodieren(lam6), z6, 20 + S3_ZIEH_ABSTAND)
+    soll(k6.vorgemerkt[K6]["teil"] == s3_teilmenge_abschnitte(K6, lam6, z6, 20, 20 + S3_ZIEH_ABSTAND, 3000, 3),
+         "Ziehen je Abschnitt")
+    abgewiesen(lambda: k6.ausgeben_s3(K6, [b"p" * 32, b"q" * 32], ["s0", "s1"], 1, 1, 4, 30, probe_art=1),
+               "ein Validator fuer drei Sender")
 
 # ---------------------------------------------------------------- Annahmestellen
 def stichproben(n: int, stellen: int, k: int, rng: random.Random) -> list[list[int]]:
@@ -1809,6 +1989,46 @@ def vektor_s3() -> dict:
     }
 
 
+def vektor_s3_sender() -> dict:
+    """Pruefvektor mehrere Sender (Knoten: quanten_s3_vormerkung.go):
+    Abschnitte, Meldung je Abschnitt, Teilmenge je Abschnitt gleich gross."""
+    K = "5d" * 32
+    rng = random.Random(2711)
+    n_puls = 3000
+    lam = sorted(rng.sample(range(n_puls), 900))
+    zufall = bytes(range(1, 33))
+    faelle = []
+    for v, n_max in ((1, 50), (1, 2000), (3, 60), (3, 61), (7, 70), (7, wk.N_MAX)):
+        faelle.append({"v": v, "n_max": n_max, "abschnitte": [list(s3_abschnitt_pulse(n_puls, v, x)) for x in range(1, v + 1)],
+                       "teil": s3_teilmenge_abschnitte(K, lam, zufall, 5, 6, n_puls, v, n_max)})
+    meldungen = []
+    # Abschnitt 2 von 3 fast leer: mit einem Sender reicht die Summe, mit drei nicht.
+    schief = sorted([i for i in lam if i < 1000 or i >= 2000] + [i for i in lam if 1000 <= i < 2000][:5])
+    for v, ppm, m in ((3, 200_000, lam), (3, 300_000, lam), (3, 150_000, schief), (1, 150_000, schief), (7, 280_000, lam)):
+        try:
+            s3_meldung_abschnitte(n_puls, ppm, m, v)
+            ok = True
+        except Abgewiesen:
+            ok = False
+        meldungen.append({"v": v, "gamma_det_ppm": ppm, "lambda": m, "ok": ok})
+    return {"k": K, "n_puls": n_puls, "lambda": lam, "zufall": zufall.hex(), "faelle": faelle, "meldungen": meldungen}
+
+
+def vektor_s3_beweis() -> dict:
+    """Pruefvektor Mehrfach-Beweis (Knoten und App rechnen gleich)."""
+    rng = random.Random(1127)
+    K = "7a" * 32
+    faelle = []
+    for n, idx in ((1, [0]), (2, [1]), (3, [2]), (5, [0, 4]), (7, [1, 2, 6]), (1000, sorted(rng.sample(range(1000), 37))),
+                   (4097, sorted(rng.sample(range(4097), 200)) + [4096]), (4097, list(range(4097)))):
+        idx = sorted(set(idx))
+        blaetter = [wk.pruefsumme(K, i, rng.getrandbits(126)) for i in range(n)]
+        beweis = s3_mehrfachbeweis(blaetter, idx)
+        faelle.append({"n": n, "idx": idx, "blaetter": [blaetter[i].hex() for i in idx], "wurzel": wk.merkle_wurzel(blaetter).hex(),
+                       "beweis": [b.hex() for b in beweis]})
+    return {"faelle": faelle}
+
+
 def vektor_s3_meldung() -> dict:
     """Pruefvektor der Kodierung (Knoten: quanten_s3_meldung.go)."""
     rng = random.Random(2611)
@@ -1830,6 +2050,12 @@ if __name__ == "__main__":
     if "--vektor-s3-meldung" in sys.argv:
         import json
         print(json.dumps(vektor_s3_meldung(), indent=1))
+    elif "--vektor-s3-beweis" in sys.argv:
+        import json
+        print(json.dumps(vektor_s3_beweis(), indent=1))
+    elif "--vektor-s3-sender" in sys.argv:
+        import json
+        print(json.dumps(vektor_s3_sender(), indent=1))
     elif "--vektor-s3" in sys.argv:
         import json
         print(json.dumps(vektor_s3(), indent=1))

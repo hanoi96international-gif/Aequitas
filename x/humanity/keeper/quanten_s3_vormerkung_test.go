@@ -32,6 +32,7 @@ type s3Welt struct {
 	sig    func(r uint64) string
 	z      int64 // Zeit der Vormerkung
 	wurzel string
+	sender int // Zahl der Sender der Vormerkung (C2b-2b-4)
 }
 
 func neueS3Welt(t *testing.T) *s3Welt {
@@ -43,7 +44,7 @@ func neueS3Welt(t *testing.T) *s3Welt {
 // der Vormerkung, quanten_s3_ausgabe_test.go).
 func neueS3WeltN(t *testing.T, n int) *s3Welt {
 	t.Helper()
-	w := &s3Welt{qsWelt: neueQsWelt(t, n, 24), z: qwT0, wurzel: strings.Repeat("5a", 32)}
+	w := &s3Welt{qsWelt: neueQsWelt(t, n, 24), z: qwT0, wurzel: strings.Repeat("5a", 32), sender: 1}
 	quantenLeitungAbOverride.Store(qwT0 - 30*86400)
 	quantenS3AbOverride.Store(qwT0 - 30*86400)
 	netz, sig := drandTestNetz(t, 0x53a11e)
@@ -70,8 +71,8 @@ func (w *s3Welt) leitungSetzen(theta, frei, gamma int, ab int64) {
 
 func (w *s3Welt) vormerkenTx(von string, key *ecdsa.PrivateKey, K, inhaber string, n int, deckung, zeit int64) Transaction {
 	return Transaction{Type: quantenS3VormerkenTxArt, Wallet: von, DistributionAt: zeit, QuantenW: &QuantenWAngaben{K: K, Inhaber: inhaber, Leitung: s3Leitung,
-		NPuls: n, Wurzel: w.wurzel, Deckung: deckung,
-		WalletSig: personalSign(w.t, key, quantenS3VormerkenNachricht(von, K, inhaber, s3Leitung, n, w.wurzel, deckung, zeit))}}
+		NPuls: n, PraepZahl: w.sender, Wurzel: w.wurzel, Deckung: deckung,
+		WalletSig: personalSign(w.t, key, quantenS3VormerkenNachricht(von, K, inhaber, s3Leitung, n, w.sender, w.wurzel, deckung, zeit))}}
 }
 
 func (w *s3Welt) meldenTx(von string, key *ecdsa.PrivateKey, K, text string) Transaction {
