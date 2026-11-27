@@ -8,7 +8,10 @@ package keeper
 // (quanten_s3_vormerkung.go), ist erst nach dem Ziehen moeglich und nur so:
 //
 //   - der Ausgeber der Vormerkung, ihre Inhaberin, ihre Wurzel, ihre Deckung;
-//     n = Zahl der gezogenen Pulse. Stelle i des Tokens ist Puls teil[i]: der
+//     n = Zahl der gezogenen Pulse; genau so viele Validatoren wie Sender
+//     (Validator x ist Sender x: sein Abschnitt der Pulse ist der Abschnitt x
+//     des Tokens, quantenSAbschnitt -- die Teilmenge zieht je Abschnitt gleich
+//     viele). Stelle i des Tokens ist Puls teil[i]: der
 //     Token merkt sich die Pulse (Pulse, NPuls), und jede Pruefung beim
 //     Einloesen geht gegen das Blatt teil[i] im Baum ueber ALLE N Pulse --
 //     dieselbe Wurzel, die vor dem ersten Puls feststand. Ein Ausgeber kann
@@ -66,8 +69,8 @@ func quantenS3AusgabePruefen(v *quantenS3Vormerkung, wallet string, q *QuantenWA
 	if quantenS3Verfallen(v, zeit) {
 		return 0, quantenWBefund("quanten_w_frist", "Vormerkung %s ist verfallen", K[:12])
 	}
-	if wallet != v.Von || q.Inhaber != v.Inhaber || q.Deckung != v.Deckung || wurzel != v.Wurzel || q.N != len(v.Teil) {
-		return 0, quantenWBefund("quanten_s3_ausgabe", "Ausgabe passt nicht zur Vormerkung (Ausgeber, Inhaberin, Deckung, Wurzel oder n = %d)", len(v.Teil))
+	if wallet != v.Von || q.Inhaber != v.Inhaber || q.Deckung != v.Deckung || wurzel != v.Wurzel || q.N != len(v.Teil) || len(q.Validatoren) != v.Sender {
+		return 0, quantenWBefund("quanten_s3_ausgabe", "Ausgabe passt nicht zur Vormerkung (Ausgeber, Inhaberin, Deckung, Wurzel, n = %d oder %d Validatoren = Sender)", len(v.Teil), v.Sender)
 	}
 	k := quantenS3KFuer(q.Tol, q.T, len(q.Validatoren), v.Theta, v.Frei)
 	if k == 0 || 2*k > q.N {

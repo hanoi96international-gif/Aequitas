@@ -714,6 +714,8 @@ func (cs *ChainState) quantenWSTokenAnsichtLocked(ctx context.Context, reg *quan
 	if t.Pulse != nil {
 		ansicht["pulse"], _ = quantenS3Kodieren(t.Pulse)
 		ansicht["n_puls"], ansicht["k_min"] = t.NPuls, t.KMin
+		// Sender = Validatoren (je ein Abschnitt); 1 = ein einzelner, vertrauter Sender.
+		ansicht["sender"] = t.NVal
 	}
 	// Ab dem Stichtag steht das Urteil nach dem Ende in der Ansicht
 	// (quanten_w_urteil.go) -- erst dann lohnt sich der letzte Versuch fuer
