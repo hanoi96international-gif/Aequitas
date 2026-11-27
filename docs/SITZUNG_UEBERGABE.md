@@ -7,7 +7,14 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~07:35 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
+**Stand 27.11. ~09:45 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
+- **App v1.33.0 veröffentlicht** (09:37 UTC, Release-Schlüssel 473e9de3…). Deploy nach #686 (Run 45958681305) grün.
+- App-PR #150 (offen): Release ohne zweite Freigabe (Entscheidung des Betreibers 27.11.). Nur das Signieren braucht
+  den Betreiber; `scripts/release_lauf_pruefen.sh` prüft Herkunft, Signieren und „neuer als das neueste Release“.
+  Nach dem Merge veröffentliche ich Releases selbst (`release-apk.yml`, nach freigegebenem Signieren).
+- Nächster Code-Schritt **C2b** (siehe unten).
+
+**Stand 27.11. ~07:35 UTC (überholt)** (Sitzung „Quantengeld Revolution“):
 - Gemergt: Aequitas #686 (8d03a53f, **C2a Register der Leitungen**, Konsens, schlafend). Deploy für #682
   (Run 45911249854) lief schon 06:21 UTC erfolgreich: die Regel „Betreiber allein reicht nicht“ greift 12:00 UTC.
   Der Merge von #686 startet einen neuen Deploy (Betreiber gibt `produktion` frei; nichts daran eilt, C2a schläft).
