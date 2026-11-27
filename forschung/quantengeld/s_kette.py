@@ -452,7 +452,7 @@ def s3_dekodieren(text: str) -> list[int]:
 #      Pulse N, Wurzel der Pruefsummen ueber ALLE N Pulse und die Deckung.
 #      Die Praeparatorinnen binden ihre Werte, BEVOR ein Puls die Leitung
 #      verlaesst; die Deckung liegt ab hier im Topf (wer vormerkt, zahlt --
-#      das begrenzt Muell). Die Vormerkung haelt die Messwerte der Leitung
+#      das begrenzt Muell), dazu ein Pfand (s3_pfand, C2b-2b-3a). Die Vormerkung haelt die Messwerte der Leitung
 #      fest (theta, frei, gamma): was das Register danach eintraegt, aendert
 #      diese Vormerkung nicht. Je Ausgeber eine offene Vormerkung.
 #   2. melden (Inhaberin, genau einmal): Lambda, die gemessenen Pulse, in der
@@ -470,7 +470,17 @@ def s3_dekodieren(text: str) -> list[int]:
 #      Wurzel ist die der Vormerkung. Danach weiter wie Variante S.
 #   5. frist (jeder): nach S3_FRIST ohne Ausgabe geht die Deckung an den
 #      Ausgeber zurueck, und erst dann ist der Platz wieder frei. Melden,
-#      Ziehen und Ausgeben sind nach der Frist abgewiesen.
+#      Ziehen und Ausgeben sind nach der Frist abgewiesen. Das Pfand geht mit
+#      zurueck, wenn nie gemeldet wurde; nach einer Meldung verfaellt es ans
+#      Grundeinkommen (auch ohne Ziehen: der Zufall der festen Runde wird
+#      oeffentlich, jeder kann die Teilmenge selbst rechnen). Ausgabe: Pfand
+#      zurueck.
+#
+# Warum ein Pfand (Befund aus C2b-2b-2): ohne es koennte ein Ausgeber mit
+# Inhaberin im Bund nach der Meldung abbrechen und neu vormerken, bis eine
+# Teilmenge mehr freie Pulse traegt, als die Leitung angibt. s3_versuch.py
+# rechnet, wie oft ein einzelner Versuch einem Faelscher ueberhaupt hilft
+# (hoechstens 2^-39,6); das Pfand macht jeden Versuch teuer.
 #
 # Die Leitung (Messwerte theta, frei, gamma_det) traegt das Register ein
 # (C2a, zwei Drittel der Pruefer); hier steht sie als Eintrag bereit.
@@ -479,6 +489,12 @@ S3_FRIST = 3600            # Sekunden von der Vormerkung bis zur Ausgabe
 S3_VORMERKUNGEN_MAX = 16   # offene Vormerkungen zugleich (= Token im Register)
 S3_ZIEH_ABSTAND = 600      # Meldung bis Zufall (wie das Los in Weg B)
 S3_MELDUNG_TX_HEX_MAX = 128 << 10  # Meldung in einer Transaktion (Endpunkt 160 KiB)
+S3_PFAND_PROZENT = 10      # wie die Bestellung in Weg B (quantenSBestellPfandFuer)
+
+
+def s3_pfand(deckung: int) -> int:
+    """max(PFAND, ceil(D * 10 %)), ganzzahlig (quantenS3PfandFuer)."""
+    return max(wk.PFAND, -(-deckung * S3_PFAND_PROZENT // 100))
 
 
 class KetteS3(KetteS):
@@ -486,6 +502,7 @@ class KetteS3(KetteS):
         super().__init__()
         self.leitungen: dict[str, dict] = {}
         self.vorgemerkt: dict[str, dict] = {}
+        self.pfaender = 0   # Pfaender offener Vormerkungen (im Knoten: Pfandtopf)
 
     def leitung(self, name: str, theta_zehntel: int, frei_ppm: int, gamma_ppm: int):
         if not (name.startswith("leitung-") and 0 <= theta_zehntel <= 100 and 0 <= frei_ppm <= wk.FREI_PPM_MAX
@@ -509,12 +526,14 @@ class KetteS3(KetteS):
             raise Abgewiesen("Vormerken: Ausgeber hat schon eine offene Vormerkung")
         if len(self.vorgemerkt) >= S3_VORMERKUNGEN_MAX:
             raise Abgewiesen("Vormerken: zu viele offene Vormerkungen")
-        if self.konten.get(von, 0) < deckung:
-            raise Abgewiesen("Vormerken: Deckung")
-        self.konten[von] -= deckung
+        pfand = s3_pfand(deckung)
+        if self.konten.get(von, 0) < deckung + pfand:
+            raise Abgewiesen("Vormerken: Deckung und Pfand")
+        self.konten[von] -= deckung + pfand
         self.topf += deckung
+        self.pfaender += pfand
         self.vorgemerkt[K] = {"von": von, "inhaber": inhaber, "leitung": dict(self.leitungen[leitung]),
-                              "n_puls": n_puls, "wurzel": wurzel, "deckung": deckung, "zeit": zeit,
+                              "n_puls": n_puls, "wurzel": wurzel, "deckung": deckung, "pfand": pfand, "zeit": zeit,
                               "meldung": None, "gemeldet": 0, "meldung_zeit": None, "teil": None}
 
     def melden(self, K: str, von: str, text: str, zeit: int):
@@ -553,6 +572,11 @@ class KetteS3(KetteS):
         del self.vorgemerkt[K]
         self.topf -= e["deckung"]
         self.konten[e["von"]] += e["deckung"]
+        self.pfaender -= e["pfand"]
+        if e["meldung"] is None:
+            self.konten[e["von"]] += e["pfand"]
+        else:
+            self.grundeinkommen += e["pfand"]
 
     def k_note(self, K: str, tol: int, t: int, n_val: int) -> int:
         l = self.vorgemerkt[K]["leitung"]
@@ -580,15 +604,20 @@ class KetteS3(KetteS):
             self.topf += e["deckung"]
             raise
         self.token[K]["pulse"] = list(e["teil"])
+        self.pfaender -= e["pfand"]
+        self.konten[e["von"]] += e["pfand"]
         del self.vorgemerkt[K]
 
 
 def selbsttest_s3(soll, abgewiesen):
     """Der Ablauf ueber eine Leitung: Gutfall und jeder Angriff."""
     rng = random.Random(2711)
+    START = 10_000_000
+    P = s3_pfand(1000)
+    soll(P == wk.PFAND and s3_pfand(20_000_000) == 2_000_000 and s3_pfand(20_000_001) == 2_000_001, "s3_pfand: max(PFAND, ceil 10 %)")
     k3 = KetteS3()
     for name in ("aus", "anna", "s0", "s1", "mallory"):
-        k3.konto(name, 10_000, name.encode())
+        k3.konto(name, START, name.encode())
     k3.leitung("leitung-test", 20, 50_000, 200_000)  # 2 Grad, 5 % frei, gamma 20 %
     abgewiesen(lambda: k3.leitung("leitung-x", 101, 0, 1), "Leitung mit theta > 10 Grad")
     abgewiesen(lambda: k3.leitung("satz-x", 0, 0, 1), "Leitung ohne Praefix")
@@ -598,7 +627,7 @@ def selbsttest_s3(soll, abgewiesen):
     abgewiesen(lambda: k3.vormerken(K, "aus", "aus", "leitung-test", 100_000, w, 1000, 10), "Ausgeber als Inhaberin")
     abgewiesen(lambda: k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 10**9, 10), "Deckung fehlt")
     k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 1000, 10)
-    soll(k3.konten["aus"] == 9000 and k3.topf == 1000, "Deckung bei der Vormerkung im Topf")
+    soll(k3.konten["aus"] == START - 1000 - P and k3.topf == 1000 and k3.pfaender == P, "Deckung und Pfand bei der Vormerkung")
     abgewiesen(lambda: k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 1000, 11), "K doppelt vorgemerkt")
     abgewiesen(lambda: k3.vormerken("cd" * 32, "aus", "anna", "leitung-test", 100_000, w, 1000, 11),
                "zweite offene Vormerkung desselben Ausgebers")
@@ -642,27 +671,43 @@ def selbsttest_s3(soll, abgewiesen):
     abgewiesen(lambda: k3.ausgeben_s3(K, wk.N_MAX // 2 + 1, proben, ["s0", "s1"], 3, 7, 4, 30), "2k > n")
     abgewiesen(lambda: k3.ausgeben_s3(K, kn, proben, ["s0", "s0"], 3, 7, 4, 30), "Stellen doppelt")
     abgewiesen(lambda: k3.ausgeben_s3(K, kn, proben, ["s0", "s1"], 3, 7, 4, 11 + S3_FRIST), "Ausgabe nach der Frist")
-    soll(k3.konten["aus"] == 9000 and k3.topf == 1000, "abgewiesene Ausgabe zahlt nichts doppelt und nichts zurueck")
+    soll(k3.konten["aus"] == START - 1000 - P and k3.topf == 1000, "abgewiesene Ausgabe zahlt nichts doppelt und nichts zurueck")
     k3.ausgeben_s3(K, kn, proben, ["s0", "s1"], 3, 7, 4, 30)
     e = k3.token[K]
     soll(e["n"] == wk.N_MAX and e["pulse"] == teil and e["wurzel"] == w and e["deckung"] == 1000, "Token ueber die Teilmenge")
-    soll(k3.konten["aus"] == 9000 and k3.topf == 1000 and K not in k3.vorgemerkt, "Deckung genau einmal im Topf")
+    soll(k3.konten["aus"] == START - 1000 and k3.topf == 1000 and k3.pfaender == 0 and K not in k3.vorgemerkt,
+         "Deckung genau einmal im Topf, Pfand zurueck")
     # Verfall: ohne Ausgabe geht die Deckung mit der Frist zurueck, erst dann
     # ist der Platz frei.
     K2 = "cd" * 32
     k3.vormerken(K2, "aus", "anna", "leitung-test", 50_000, w, 500, 100)
-    soll(k3.konten["aus"] == 8500, "zweite Vormerkung zahlt")
+    soll(k3.konten["aus"] == START - 1500 - s3_pfand(500), "zweite Vormerkung zahlt Deckung und Pfand")
     abgewiesen(lambda: k3.melden(K2, "anna", text, 101 + S3_FRIST), "Meldung nach dem Verfall")
     abgewiesen(lambda: k3.vormerken("ef" * 32, "aus", "anna", "leitung-test", 50_000, w, 1, 101 + S3_FRIST),
                "verfallene Vormerkung belegt den Ausgeber bis zur Frist")
     k3.frist(K2, 101 + S3_FRIST)
-    soll(K2 not in k3.vorgemerkt and k3.konten["aus"] == 9000, "Frist: Deckung zurueck")
+    soll(K2 not in k3.vorgemerkt and k3.konten["aus"] == START - 1000 and k3.pfaender == 0, "Frist ohne Meldung: Deckung und Pfand zurueck")
     abgewiesen(lambda: k3.frist(K2, 102 + S3_FRIST), "Frist zweimal")
+    # Der Angriff aus C2b-2b-2: nach der Meldung abbrechen und neu vormerken.
+    # Das Pfand verfaellt -- mit und ohne Ziehen.
+    for gezogen in (False, True):
+        K3 = ("e1" if gezogen else "e0") * 32
+        z0 = 10_000 * (2 + gezogen)
+        vorher, ge = k3.konten["aus"], k3.grundeinkommen
+        k3.vormerken(K3, "aus", "anna", "leitung-test", 100_000, w, 1000, z0)
+        k3.melden(K3, "anna", text, z0 + 1)
+        if gezogen:
+            k3.ziehen(K3, text, bytes(range(32)), z0 + 1 + S3_ZIEH_ABSTAND)
+        k3.frist(K3, z0 + 1 + S3_FRIST)
+        soll(k3.konten["aus"] == vorher - P and k3.grundeinkommen == ge + P and k3.pfaender == 0,
+             f"Abbruch nach der Meldung kostet das Pfand (gezogen: {gezogen})")
+    k3.konto("knapp", 1000, b"knapp")
+    abgewiesen(lambda: k3.vormerken("e2" * 32, "knapp", "anna", "leitung-test", 100_000, w, 1000, 10), "Deckung da, Pfand fehlt")
     # Grenze der offenen Vormerkungen.
     k4 = KetteS3()
     k4.leitung("leitung-test", 0, 0, 1)
     for i in range(S3_VORMERKUNGEN_MAX + 1):
-        k4.konto(f"aus{i}", 10, f"aus{i}".encode())
+        k4.konto(f"aus{i}", 1 + s3_pfand(1), f"aus{i}".encode())
     for i in range(S3_VORMERKUNGEN_MAX):
         k4.vormerken(f"{i:064x}", f"aus{i}", "anna", "leitung-test", 10, w, 1, 5)
     letzter = f"aus{S3_VORMERKUNGEN_MAX}"

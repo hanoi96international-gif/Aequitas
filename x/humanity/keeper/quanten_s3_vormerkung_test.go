@@ -24,6 +24,9 @@ const (
 	s3Deckung int64 = 2_000_000
 )
 
+// s3Pfand: das Pfand zur Deckung (C2b-2b-3a): max(1 AEQ, 10 %) -- wie s_kette.s3_pfand.
+var s3Pfand = quantenS3PfandFuer(s3Deckung)
+
 type s3Welt struct {
 	*qsWelt
 	sig    func(r uint64) string
@@ -142,8 +145,9 @@ func TestQuantenS3_Gutfall(t *testing.T) {
 	if v == nil || v.Von != w.praeger || v.Inhaber != w.anna || v.Gamma != s3Gamma || v.Theta != 20 || v.Frei != 50_000 || v.NPuls != s3N || v.Gemeldet != 0 || v.Zeit != w.z {
 		t.Fatalf("Vormerkung: %+v", v)
 	}
-	if tx.QuantenW.Pfand != s3Deckung || w.stand(w.cs, w.praeger) != vorher-s3Deckung || w.stand(w.cs, quantenWPfandAddr) != pfandVorher+s3Deckung {
-		t.Fatal("Deckung nicht im Pfandtopf")
+	if s3Pfand != quantenWPfand || quantenS3PfandFuer(20_000_000) != 2_000_000 || v.Pfand != s3Pfand || tx.QuantenW.Pfand != s3Deckung+s3Pfand || w.stand(w.cs, w.praeger) != vorher-s3Deckung-s3Pfand ||
+		w.stand(w.cs, quantenWPfandAddr) != pfandVorher+s3Deckung+s3Pfand {
+		t.Fatal("Deckung und Pfand nicht im Pfandtopf")
 	}
 
 	w.annehmen(w.meldenTx(w.anna, w.keys[w.anna], K, text), w.z+10)
@@ -186,8 +190,8 @@ func TestQuantenS3_Gutfall(t *testing.T) {
 	}
 }
 
-// Ohne Ausgabe geht die Deckung mit der Frist zurueck, erst dann ist der
-// Platz frei; Melden und Ziehen danach sind abgewiesen.
+// Ohne Meldung gehen Deckung und Pfand mit der Frist zurueck, erst dann ist
+// der Platz frei; Melden und Ziehen danach sind abgewiesen.
 func TestQuantenS3_Frist(t *testing.T) {
 	w := neueS3Welt(t)
 	K := w.p.K
@@ -202,7 +206,7 @@ func TestQuantenS3_Frist(t *testing.T) {
 	w.abgewiesen("verfallene Vormerkung belegt den Ausgeber bis zur Frist",
 		w.vormerkenTx(w.praeger, w.keys[w.praeger], K2, w.anna, s3N, s3Deckung, ende+1), ende+1, "quanten_s3_offen")
 	tx := w.annehmen(s3FristTx(K), ende+1)
-	if tx.QuantenW.Pfand != s3Deckung || tx.QuantenW.PfandAn != w.praeger || w.stand(w.cs, w.praeger) != vorher || w.vs(w.cs, K) != nil {
+	if tx.QuantenW.Pfand != s3Deckung+s3Pfand || tx.QuantenW.PfandAn != w.praeger || tx.QuantenW.Wert != 0 || w.stand(w.cs, w.praeger) != vorher || w.vs(w.cs, K) != nil {
 		t.Fatalf("Frist: %+v", tx.QuantenW)
 	}
 	w.abgewiesen("Frist zweimal", s3FristTx(K), ende+2, "quanten_w_unbekannt")
@@ -210,7 +214,7 @@ func TestQuantenS3_Frist(t *testing.T) {
 	w2 := neueS3Welt(t)
 	w2.annehmen(w2.vormerkenTx(w2.praeger, w2.keys[w2.praeger], K, w2.anna, s3N, s3Deckung, w2.z), w2.z)
 	falsch := s3FristTx(K)
-	falsch.QuantenW.Pfand, falsch.QuantenW.PfandAn, falsch.BuchAt = s3Deckung, w2.bert, ende+1
+	falsch.QuantenW.Pfand, falsch.QuantenW.PfandAn, falsch.BuchAt = s3Deckung+s3Pfand, w2.bert, ende+1
 	if err := w2.nachspielen(falsch, ende+8); err == nil {
 		t.Fatal("Frist mit fremdem Empfaenger im Block angenommen")
 	}
@@ -220,6 +224,59 @@ func TestQuantenS3_Frist(t *testing.T) {
 	w3.annehmen(w3.meldenTx(w3.anna, w3.keys[w3.anna], K, text), w3.z+10)
 	r, _ := quantenS3ZiehRunde(w3.z + 10)
 	w3.abgewiesen("Ziehen nach dem Verfall", w3.ziehenTx(K, text, r, w3.sig(r)), ende+1, "quanten_w_frist")
+}
+
+// C2b-2b-3a, der Angriff aus C2b-2b-2: nach der Meldung steht die Runde fest,
+// ihr Zufall wird oeffentlich, und jeder kann die Teilmenge selbst rechnen.
+// Ein Abbruch danach (Frist statt Ausgabe) kostet das Pfand -- ob gezogen
+// wurde oder nicht. Die Deckung geht zurueck, das Pfand ans Grundeinkommen.
+func TestQuantenS3_PfandVerfaelltNachMeldung(t *testing.T) {
+	for _, gezogen := range []bool{false, true} {
+		w := neueS3Welt(t)
+		K := w.p.K
+		vorher := w.stand(w.cs, w.praeger)
+		ubiVorher := w.stand(w.cs, ubiPoolAddr)
+		pfandVorher := w.stand(w.cs, quantenWPfandAddr)
+		summe := w.summe(w.cs)
+		lam := s3Lambda(9, s3N, 20_000)
+		text := s3Text(t, lam)
+		w.annehmen(w.vormerkenTx(w.praeger, w.keys[w.praeger], K, w.anna, s3N, s3Deckung, w.z), w.z)
+		w.annehmen(w.meldenTx(w.anna, w.keys[w.anna], K, text), w.z+10)
+		if gezogen {
+			r, _ := quantenS3ZiehRunde(w.z + 10)
+			w.annehmen(w.ziehenTx(K, text, r, w.sig(r)), w.z+10+quantenS3ZiehAbstand+5)
+		}
+		ende := w.z + quantenS3Frist + 1
+		// Ein Erzeuger, der das Pfand trotzdem zurueckgibt (oder gar nichts
+		// verfallen laesst), faellt beim Nachspielen.
+		for name, f := range map[string]func(q *QuantenWAngaben){
+			"Pfand zurueck an den Ausgeber": func(q *QuantenWAngaben) { q.Pfand, q.PfandAn = s3Deckung+s3Pfand, w.praeger },
+			"nichts verfaellt":              func(q *QuantenWAngaben) { q.Pfand, q.PfandAn = s3Deckung, w.praeger },
+			"Pfand an den Ausgeber als Wert": func(q *QuantenWAngaben) {
+				q.Pfand, q.PfandAn, q.Wert, q.WertAn = s3Deckung, w.praeger, s3Pfand, w.praeger
+			},
+			"weniger verfaellt": func(q *QuantenWAngaben) { q.Pfand, q.PfandAn, q.Wert = s3Deckung, w.praeger, s3Pfand-1 },
+		} {
+			falsch := s3FristTx(K)
+			f(falsch.QuantenW)
+			falsch.BuchAt = ende
+			if err := w.nachspielen(falsch, ende+7); err == nil {
+				t.Fatalf("gezogen=%v, %s: im Block angenommen", gezogen, name)
+			}
+		}
+		tx := w.annehmen(s3FristTx(K), ende)
+		q := tx.QuantenW
+		if q.Pfand != s3Deckung || q.PfandAn != w.praeger || q.Wert != s3Pfand || q.WertAn != "" {
+			t.Fatalf("gezogen=%v, Frist: %+v", gezogen, q)
+		}
+		if w.stand(w.cs, w.praeger) != vorher-s3Pfand || w.stand(w.cs, ubiPoolAddr) != ubiVorher+s3Pfand ||
+			w.stand(w.cs, quantenWPfandAddr) != pfandVorher || w.summe(w.cs) != summe || w.vs(w.cs, K) != nil {
+			t.Fatalf("gezogen=%v: Pfand nicht verfallen", gezogen)
+		}
+		if w.cs.quantenWJetzt().kodiert() != w.nach.quantenWJetzt().kodiert() || w.stand(w.nach, ubiPoolAddr) != ubiVorher+s3Pfand {
+			t.Fatalf("gezogen=%v: Knoten weichen ab", gezogen)
+		}
+	}
 }
 
 // Missbrauch beim Vormerken: jede Form, fremde Unterschrift, kein Mensch,
@@ -239,6 +296,9 @@ func TestQuantenS3_AngriffeVormerken(t *testing.T) {
 	w.abgewiesen("N zu gross", w.vormerkenTx(w.praeger, pk, K, w.anna, quantenS3PulsMax+1, s3Deckung, z), z, "quanten_w_form")
 	w.abgewiesen("Deckung unter dem Mindestmass", w.vormerkenTx(w.praeger, pk, K, w.anna, s3N, quantenMindestDeckungMik-1, z), z, "quanten_w_form")
 	w.abgewiesen("Deckung fehlt", w.vormerkenTx(w.praeger, pk, K, w.anna, s3N, 1_000_000_000, z), z, "quanten_w_deckung")
+	// Genau die Deckung da, das Pfand nicht: abgewiesen (C2b-2b-3a).
+	alles := w.stand(w.cs, w.praeger)
+	w.abgewiesen("Deckung da, Pfand fehlt", w.vormerkenTx(w.praeger, pk, K, w.anna, s3N, alles, z), z, "quanten_w_deckung")
 	w.abgewiesen("Wurzel kein Hash", vm(func(q *QuantenWAngaben) { q.Wurzel = "zz" }), z, "quanten_w_form")
 	w.abgewiesen("Satz statt Leitung", vm(func(q *QuantenWAngaben) { q.Leitung = "satz-test" }), z, "quanten_w_form")
 	w.abgewiesen("unbekannte Leitung", vm(func(q *QuantenWAngaben) { q.Leitung = "leitung-fremd" }), z, "quanten_s3_leitung")
@@ -247,11 +307,14 @@ func TestQuantenS3_AngriffeVormerken(t *testing.T) {
 	w.abgewiesen("Unterschrift fuer andere Inhaberin", vm(func(q *QuantenWAngaben) { q.Inhaber = w.bert }), z, "quanten_w_unterschrift")
 	w.abgewiesen("Unterschrift fuer anderes N", vm(func(q *QuantenWAngaben) { q.NPuls-- }), z, "quanten_w_unterschrift")
 	w.abgewiesen("fremdes Feld (t)", vm(func(q *QuantenWAngaben) { q.T = 3 }), z, "quanten_w_form")
-	// Pfand ist gerechnet: ein Block mit einem anderen als der Deckung faellt beim Nachspielen.
-	falsch := vm(func(q *QuantenWAngaben) { q.Pfand = s3Deckung - 1 })
-	falsch.BuchAt = z
-	if err := w.nachspielen(falsch, z+7); err == nil || !strings.Contains(err.Error(), "gerechnet") {
-		t.Fatalf("falsches Pfand im Block: %v", err)
+	// Pfand ist gerechnet: ein Block, der nur die Deckung (ohne Pfand) oder
+	// weniger nennt, faellt beim Nachspielen.
+	for _, p := range []int64{s3Deckung, s3Deckung + s3Pfand - 1} {
+		falsch := vm(func(q *QuantenWAngaben) { q.Pfand = p })
+		falsch.BuchAt = z
+		if err := w.nachspielen(falsch, z+7); err == nil || !strings.Contains(err.Error(), "gerechnet") {
+			t.Fatalf("falsches Pfand %d im Block: %v", p, err)
+		}
 	}
 	keinMensch, a := neuerSchluessel(t)
 	for _, cs := range []*ChainState{w.cs, w.nach} {
@@ -445,6 +508,10 @@ func TestQuantenS3_RegisterStreng(t *testing.T) {
 	pruefen("kein Leitungsname", func(fs *quantenWRegisterForm) { fs.S3[0].Leitung = "satz-x" })
 	pruefen("N 0", func(fs *quantenWRegisterForm) { fs.S3[0].NPuls = 0 })
 	pruefen("Deckung zu klein", func(fs *quantenWRegisterForm) { fs.S3[0].Deckung = 1 })
+	pruefen("Pfand fehlt", func(fs *quantenWRegisterForm) { fs.S3[0].Pfand = 0 })
+	pruefen("Pfand kleiner", func(fs *quantenWRegisterForm) { fs.S3[0].Pfand-- })
+	pruefen("Pfand groesser", func(fs *quantenWRegisterForm) { fs.S3[0].Pfand++ })
+	pruefen("Deckung ohne passendes Pfand", func(fs *quantenWRegisterForm) { fs.S3[0].Deckung *= 10 })
 	pruefen("weniger gemeldet als gamma", func(fs *quantenWRegisterForm) { fs.S3[0].Gemeldet = 19_999 })
 	pruefen("gemeldet ohne Hash", func(fs *quantenWRegisterForm) { fs.S3[0].Meldung = "" })
 	pruefen("Meldung nicht nach der Vormerkung", func(fs *quantenWRegisterForm) { fs.S3[0].MeldungZeit = fs.S3[0].Zeit })
@@ -502,7 +569,7 @@ func TestQuantenS3_Annahme(t *testing.T) {
 	jetzt := nowUnix()
 	w.nullifier(pfNAnna, w.praeger)
 	fertig, err := w.cs.quantenWAnnehmen(w.vormerkenTx(w.praeger, w.keys[w.praeger], K, w.anna, s3N, s3Deckung, jetzt))
-	if err != nil || fertig.QuantenW.Pfand != s3Deckung {
+	if err != nil || fertig.QuantenW.Pfand != s3Deckung+s3Pfand {
 		t.Fatalf("Vormerken: %v", err)
 	}
 	if err := w.nachspielen(fertig, fertig.BuchAt+3); err != nil {
@@ -528,13 +595,13 @@ func TestQuantenS3_Annahme(t *testing.T) {
 		cs.mu.Unlock()
 	}
 	fertig, err = w.cs.quantenWAnnehmen(s3FristTx(K))
-	if err != nil || fertig.QuantenW.PfandAn != neu || w.stand(w.cs, neu) != s3Deckung {
+	if err != nil || fertig.QuantenW.PfandAn != neu || w.stand(w.cs, neu) != s3Deckung+s3Pfand {
 		t.Fatalf("Frist ueber die Annahme (an die neue Wallet): %v %+v", err, fertig.QuantenW)
 	}
 	if err := w.nachspielen(fertig, fertig.BuchAt+3); err != nil {
 		t.Fatalf("Nachspielen Frist: %v", err)
 	}
-	if w.cs.quantenWJetzt().kodiert() != w.nach.quantenWJetzt().kodiert() || w.stand(w.nach, neu) != s3Deckung {
+	if w.cs.quantenWJetzt().kodiert() != w.nach.quantenWJetzt().kodiert() || w.stand(w.nach, neu) != s3Deckung+s3Pfand {
 		t.Fatal("Knoten weichen ab")
 	}
 }
