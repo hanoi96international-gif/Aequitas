@@ -7,11 +7,28 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~17:00 UTC — HIER WEITERMACHEN** (Zweig `claude/handover-second-validator-8uibye`):
-- **Offen: PR „Weg C, C2b-2b-3b: Ausgabe über die gezogene Teilmenge“** (Konsens, schlafend, `quanten_s3_ausgabe.go`).
-  Sicherheitsprüfung als PR-Kommentar. Nächster Handgriff: CI grün → mergen (Squash, volle Kopf-SHA), Zweig zurücksetzen
-  (`git checkout -B claude/handover-second-validator-8uibye origin/main`, `git merge -s ours --no-edit
-  origin/claude/handover-second-validator-8uibye`, push), Abo beenden, Übergabe nachziehen.
+**Stand 27.11. ~17:15 UTC — HIER WEITERMACHEN** (Zweig `claude/handover-second-validator-8uibye`):
+- **Betreiber 27.11.: „Erstmal alles wegen Fördergeld vergessen. Aequitas komplett auf die Beine bringen, weiter mit
+  Quantengeld, dass es endlich eine Revolution ist.“** Förderung ruht.
+- **Offen: PR #694 Gerätevorgabe** (`s3_geraet.py`, nur Rechnung/Doku, kein Konsens). Ergebnis: Eigenbau mit μ ≤ 0,05 und
+  Si-SPAD reicht rechnerisch, auch mit Schwelle 4 von 7 (≤ 1,1 M Pulse ≈ 1 s bei 1 MHz). Nach grüner CI mergen.
+- **Designfrage für C4 (an den Betreiber gestellt):** Wer den Sender bedient, kennt die Werte. Ein Sender = t 1 von 1
+  (gegen die Inhaberin Physik, gegen den Senderbetreiber Vertrauen). Für t von v braucht es v Sender (je ein Abschnitt,
+  wie Weg B). Die S3-Ausgabe im Knoten geht heute über Weg A (Validatoren mit Anteilen); für v Sender passt eher das
+  Abschnitt-Modell von Weg B → vor weiteren Werkzeugen entscheiden.
+- Beta-Punkte (nur Betreiber, `BETA_BEREITSCHAFT.md` Abschnitt 3): Impressum/Datenschutz (`rechtstexte-setzen.yml`),
+  DSGVO, zweiter Server mit eigenem Betreiber, Deepfake-Aufnahmen, Umgebung `produktion`, Sicherung außer Haus.
+
+**Stand 27.11. ~16:45 UTC (überholt)** (Zweig `claude/handover-second-validator-8uibye`):
+- **Gemergt: #693 (c2d577ed, C2b-2b-3b, Ausgabe über die gezogene Teilmenge, Konsens, schlafend).** Keine PRs offen.
+  Kettenteil von Weg C damit fertig.
+- **Gespräch mit dem Betreiber 27.11. (Richtung):** „Durch Physik unkopierbar“ geht nur mit Quanten-Hardware bei der
+  Inhaberin (Sender, Einzelphotonen-Empfänger). Kosten recherchiert: Partner-Labor ~0 € Hardware; eigener Minimal-Aufbau
+  grob 25–60 T€ (SPAD-Detektoren bei DigiKey 4,5–15 T$ je Stück, 2–4 nötig; Time Tagger und Optik nur geschätzt);
+  kommerzielles QKD-Paar 100–220 T$ und gibt meist keine Rohdaten je Puls. Ohne Labor ehrlich: „niemand kann allein
+  fälschen“ (Schwelle, Weg B), nicht „durch Physik“. Förderung: Prototype Fund/Software Sprint (Frist 30.11.2026, bis
+  47,5 T€ Einzelperson, nur abtrennbarer Open-Source-Baustein), Unitary-Microgrant (~4 T$, passt), NLnet NGI0 Commons
+  geschlossen. Offen beim Betreiber: Wohnsitz DE + selbstständig? → dann Antrag Prototype Fund entwerfen.
 - Inhalt: Ausgabe eines vorgemerkten K nur nach dem Ziehen, vor der Frist, mit Ausgeber/Inhaberin/Wurzel/Deckung der
   Vormerkung, n = Teilmenge; k = `quantenSKLeitung` (festgehaltene θ/frei), k = 0 oder 2k > n abgewiesen. Token-Felder
   `pulse`, `n_puls`, `k_min` (fehlen bei bisherigen Token → StateRoot gleich). Einlösen/Nachweis: Blatt teil[i] im Baum
