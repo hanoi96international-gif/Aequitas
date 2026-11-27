@@ -7,7 +7,18 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~17:15 UTC — HIER WEITERMACHEN** (Zweig `claude/handover-second-validator-8uibye`):
+**Stand 27.11. ~17:45 UTC — HIER WEITERMACHEN** (Zweig `claude/handover-second-validator-8uibye`):
+- Gemergt: **#694** (db14f90f, Gerätevorgabe `s3_geraet.py`).
+- **Offen: PR #695 (C2b-2b-4, mehrere Sender, Konsens, schlafend).** Entscheidung des Betreibers: „Beides“ (Kette für
+  mehrere Sender, erster Versuch mit einem Sender erlaubt, gekennzeichnet). Sicherheitsprüfung als PR-Kommentar steht.
+  Nach grüner CI mergen (Squash, volle Kopf-SHA), Zweig zurücksetzen, Abo beenden.
+- Inhalt #695: Vormerkung nennt v (praep_zahl), Sender x = Abschnitt [(x−1)N/v, xN/v); Meldung je Abschnitt ≥ γ_det,
+  Teilmenge je Abschnitt gleich viele (schließt „schiefe Meldung“ der Inhaberin im Bund mit einem Sender); Ausgabe mit
+  genau v Validatoren; v = 1 byte-gleich (Vektoren unverändert, App unberührt); Vektor `--vektor-s3-sender`. 17 Mutationen rot.
+- **Danach (C2b-2b-3c):** Werkzeuge/App für Weg C (Ausgeber: Vormerken mit v Sendern, Abschnitte wie Weg A; Inhaberin:
+  Meldung aus Empfänger-Datei; Annahmestelle prüft pulse/k_min/sender; Offenlegen in kleineren Teilen), dann Stichtag.
+
+**Stand 27.11. ~17:15 UTC (überholt)** (Zweig `claude/handover-second-validator-8uibye`):
 - **Betreiber 27.11.: „Erstmal alles wegen Fördergeld vergessen. Aequitas komplett auf die Beine bringen, weiter mit
   Quantengeld, dass es endlich eine Revolution ist.“** Förderung ruht.
 - **Offen: PR #694 Gerätevorgabe** (`s3_geraet.py`, nur Rechnung/Doku, kein Konsens). Ergebnis: Eigenbau mit μ ≤ 0,05 und
