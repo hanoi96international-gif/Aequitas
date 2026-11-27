@@ -300,6 +300,11 @@ type quantenWSTokenForm struct {
 	Zeit      int64                   `json:"zeit"`
 	Stellen   [2]string               `json:"stellen"`
 	ProbeArt  int                     `json:"probe_art,omitempty"` // 2 = Stichprobe v2; fehlt = wie bisher
+	// Weg C (quanten_s3_ausgabe.go): ueber eine Leitung ausgegeben. Alle drei
+	// fehlen bei bisherigen Token (Register und StateRoot bleiben gleich).
+	Pulse string `json:"pulse,omitempty"` // quantenS3Kodieren: Stelle i = Puls Pulse[i]
+	NPuls int    `json:"n_puls,omitempty"`
+	KMin  int    `json:"k_min,omitempty"`
 }
 
 func (e *quantenWSEintrag) form(K string) quantenWSTokenForm {
@@ -307,6 +312,10 @@ func (e *quantenWSEintrag) form(K string) quantenWSTokenForm {
 	f := quantenWSTokenForm{K: K, N: t.N, Inhaber: t.Inhaber, Wurzel: hex.EncodeToString(t.Wurzel[:]), Deckung: t.Deckung,
 		Proben: [2]string{hex.EncodeToString(t.Proben[0][:]), hex.EncodeToString(t.Proben[1][:])},
 		T:      t.T, NVal: t.NVal, Tol: t.Tol, C: t.C, Fehl: t.Fehl, Anteile: e.Anteile, Zeit: e.Zeit, Stellen: e.Stellen, ProbeArt: t.ProbeArt}
+	if t.Pulse != nil {
+		f.Pulse, _ = quantenS3Kodieren(t.Pulse) // gelesen oder gezogen: kodierbar
+		f.NPuls, f.KMin = t.NPuls, t.KMin
+	}
 	if t.D != nil {
 		f.D = quantenWBitsHex(t.D)
 	}
@@ -343,6 +352,14 @@ func quantenWSTokenLesen(f quantenWSTokenForm) (*quantenWSEintrag, error) {
 		return falsch("Art der Stichprobe")
 	}
 	t.ProbeArt = f.ProbeArt
+	if f.Pulse != "" || f.NPuls != 0 || f.KMin != 0 {
+		pulse, err := quantenS3Dekodieren(f.Pulse)
+		if err != nil || len(pulse) != f.N || f.NPuls < 1 || f.NPuls > quantenS3PulsMax || pulse[len(pulse)-1] >= f.NPuls ||
+			f.KMin < 1 || 2*f.KMin > f.N {
+			return falsch("Leitung (Pulse, N oder Pruefgroesse)")
+		}
+		t.Pulse, t.NPuls, t.KMin = pulse, f.NPuls, f.KMin
+	}
 	if f.D != "" {
 		if t.D, ok1 = quantenWBitsAusHex(f.D, f.N); !ok1 {
 			return falsch("Bindung")
@@ -369,7 +386,7 @@ func quantenWSTokenLesen(f quantenWSTokenForm) (*quantenWSEintrag, error) {
 				return falsch("Salze der Anmeldung")
 			}
 		}
-		if !t.probePasst(f.K, a.B, a.Probe, salze) || (t.ProbeArt != 2 && len(a.Salze) != 0) {
+		if !t.probePasst(f.K, a.B, a.Probe, salze) || (t.ProbeArt != 2 && len(a.Salze) != 0) || !t.probeGross(len(a.Probe)) {
 			return falsch("Stichprobe passt nicht zur Ausgabe")
 		}
 		t.Anmeldung = &quantenSAnmeldung{B: a.B, Stelle: a.Stelle, X: x, Probe: append([]int(nil), a.Probe...),
@@ -477,7 +494,7 @@ func (cs *ChainState) quantenWSBescheidLocked(ctx context.Context, tx *Transacti
 		if a == nil || q.Ab < 0 || len(q.Offen) == 0 || len(q.Offen) > quantenWOffenTeil {
 			return quantenWBefund("quanten_w_form", "Offenlegen: Anmeldung, Beginn oder Zahl der Stellen"), nil
 		}
-		offen, ok := quantenWOffenLesen(q.Offen)
+		offen, ok := quantenWOffenLesenMax(q.Offen, e.pfadMax())
 		if !ok {
 			return quantenWBefund("quanten_w_form", "Offenlegen: Anteile oder Pfade nicht in gueltiger Form"), nil
 		}
@@ -568,11 +585,6 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 	if _, da := reg.IPfand[q.K]; da {
 		return quantenWBefund("quanten_w_doppelt", "zu %s liegt noch das Pfand einer Inhaberin", q.K[:12]), nil
 	}
-	// Weg C: ein vorgemerktes K gibt erst die Ausgabe ueber die Leitung aus
-	// (C2b-2b-3); bis dahin keine andere Ausgabe mit diesem K.
-	if reg.S3[q.K] != nil {
-		return quantenWBefund("quanten_w_doppelt", "%s ist ueber eine Leitung vorgemerkt", q.K[:12]), nil
-	}
 	if len(reg.Token) >= quantenWTokenHoechstens {
 		return quantenWBefund("quanten_w_voll", "Register voll (%d Token)", len(reg.Token)), nil
 	}
@@ -607,6 +619,16 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 		return quantenWBefund("quanten_w_form", "%v", err), nil
 	}
 	tok.ProbeArt = q.ProbeArt
+	// Weg C (quanten_s3_ausgabe.go): ein vorgemerktes K nur ueber die gezogene
+	// Teilmenge, durch den Ausgeber der Vormerkung.
+	s3 := reg.S3[q.K]
+	if s3 != nil {
+		k, u := quantenS3AusgabePruefen(s3, wallet, q, wurzel, blockZeit)
+		if k == 0 {
+			return u, nil
+		}
+		tok.Pulse, tok.NPuls, tok.KMin = slices.Clone(s3.Teil), s3.NPuls, k
+	}
 	if err := quantenWUnterschrift(q, quantenWSAusgabeNachrichtArt(wallet, q.K, q.N, q.T, q.Wurzel, q.Validatoren, q.Proben, q.Annahme, inhaber, q.Deckung, zeit, q.Tol, q.ProbeArt), wallet, blockZeit); err != nil {
 		return quantenWBefund("quanten_w_unterschrift", "Ausgeber %s: %v", kurzAdresse(wallet), err), nil
 	}
@@ -626,7 +648,8 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 	if q.Deckung < quantenMindestDeckungMik {
 		return quantenWBefund("quanten_w_deckung", "Deckung %d, mindestens %d Mikro-AEQ", q.Deckung, quantenMindestDeckungMik), nil
 	}
-	if cs.quantenWMikroLocked(ctx, wallet) < q.Deckung {
+	// Ueber eine Leitung liegt die Deckung schon im Pfandtopf.
+	if s3 == nil && cs.quantenWMikroLocked(ctx, wallet) < q.Deckung {
 		return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ", kurzAdresse(wallet), q.Deckung), nil
 	}
 	anteile, ok := quantenAnteileFuer(q.Deckung, cs.quantenWMikroLocked(ctx, quantenWTopfAddr), reg.summeAnteile())
@@ -639,6 +662,13 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 	}
 	neu.Token[q.K] = &quantenWSEintrag{token: tok, Anteile: anteile, Zeit: zeit, Stellen: stellen}
 	u := quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWTopfAddr, q.Deckung}}, felder: QuantenWAngaben{Anteile: anteile}}
+	// Weg C: die Deckung aus dem Pfandtopf genau einmal in den W-Topf, das
+	// Pfand zurueck an den Ausgeber; die Vormerkung ist verbraucht.
+	if s3 != nil {
+		delete(neu.S3, q.K)
+		u.wege = []quantenWWeg{{quantenWPfandAddr, quantenWTopfAddr, s3.Deckung}, {quantenWPfandAddr, wallet, s3.Pfand}}
+		u.felder.Pfand, u.felder.PfandAn = s3.Pfand, wallet
+	}
 	// Weg B: die Bestellung ist verbraucht, ihr Pfand geht zurueck.
 	if b := reg.Best[q.K]; b != nil {
 		delete(neu.Best, q.K)
@@ -678,6 +708,12 @@ func (cs *ChainState) quantenWSTokenAnsichtLocked(ctx context.Context, reg *quan
 	// ist es ein Token im bisherigen Weg.
 	if t.ProbeArt != 0 {
 		ansicht["probe_art"] = t.ProbeArt
+	}
+	// Weg C: ueber eine Leitung ausgegeben. Wer offenlegt, braucht die Pulse
+	// (Blatt teil[i] im Baum ueber n_puls); jede Stichprobe mindestens k_min.
+	if t.Pulse != nil {
+		ansicht["pulse"], _ = quantenS3Kodieren(t.Pulse)
+		ansicht["n_puls"], ansicht["k_min"] = t.NPuls, t.KMin
 	}
 	// Ab dem Stichtag steht das Urteil nach dem Ende in der Ansicht
 	// (quanten_w_urteil.go) -- erst dann lohnt sich der letzte Versuch fuer

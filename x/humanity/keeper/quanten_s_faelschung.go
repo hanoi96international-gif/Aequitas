@@ -237,7 +237,7 @@ func (cs *ChainState) quantenSFaelschungBescheidLocked(ctx context.Context, tx *
 		if t.Anmeldung == nil || q.Ab < 0 || len(q.Offen) == 0 || len(q.Offen) > quantenWOffenTeil {
 			return quantenWBefund("quanten_w_form", "Nachweis offenlegen: Anmeldung, Beginn oder Zahl der Stellen"), nil
 		}
-		werte, ok := quantenSWerteLesen(q.Offen)
+		werte, ok := quantenSWerteLesenMax(q.Offen, t.pfadMax())
 		if !ok {
 			return quantenWBefund("quanten_w_form", "Nachweis offenlegen: Werte oder Pfade nicht in gueltiger Form"), nil
 		}
@@ -281,9 +281,15 @@ type quantenSWertStelle struct {
 // quantenSWerteLesen: je Stelle genau ein Wert (hex, hoechstens 32 Zeichen),
 // keine Anteile, hoechstens quantenWPfadMax Pfadglieder.
 func quantenSWerteLesen(in []QuantenWOffen) ([]quantenSWertStelle, bool) {
+	return quantenSWerteLesenMax(in, quantenWPfadMax)
+}
+
+// quantenSWerteLesenMax: mit eigener Grenze der Pfadlaenge (Token ueber eine
+// Leitung: quantenSToken.pfadMax).
+func quantenSWerteLesenMax(in []QuantenWOffen, pfadMax int) ([]quantenSWertStelle, bool) {
 	var out []quantenSWertStelle
 	for _, o := range in {
-		if len(o.Anteile) != 0 || o.W == "" || len(o.W) > 32 || !kleinHex(o.W) || len(o.Pfad) > quantenWPfadMax {
+		if len(o.Anteile) != 0 || o.W == "" || len(o.W) > 32 || !kleinHex(o.W) || len(o.Pfad) > pfadMax {
 			return nil, false
 		}
 		w, ok := new(big.Int).SetString(o.W, 16)
@@ -305,6 +311,11 @@ func quantenSWerteLesen(in []QuantenWOffen) ([]quantenSWertStelle, bool) {
 
 // quantenSWerteAuswerten: wie quantenWAuswerten, mit dem Wert statt der Anteile.
 func quantenSWerteAuswerten(K string, n int, wurzel [32]byte, stellen, basen, antwort []int, werte []quantenSWertStelle) (treffer, fehler int, err error) {
+	return quantenSWerteAuswertenBlaetter(K, n, nil, wurzel, stellen, basen, antwort, werte)
+}
+
+// quantenSWerteAuswertenBlaetter: wie quantenWAuswertenBlaetter, mit Werten.
+func quantenSWerteAuswertenBlaetter(K string, baum int, pulse []int, wurzel [32]byte, stellen, basen, antwort []int, werte []quantenSWertStelle) (treffer, fehler int, err error) {
 	if len(werte) != len(stellen) || len(antwort) != len(stellen) || len(basen) != len(stellen) {
 		return 0, 0, quantenWFehler("Zahl der Stellen")
 	}
@@ -314,7 +325,8 @@ func quantenSWerteAuswerten(K string, n int, wurzel [32]byte, stellen, basen, an
 		if w.Sign() < 0 || w.Cmp(grenze) >= 0 {
 			return 0, 0, quantenWFehler("Stelle %d: Wert zu gross", i)
 		}
-		if !quantenWMerklePruefen(wurzel, quantenWPruefsumme(K, i, w), i, werte[j].Pfad, n) {
+		blatt, ok := quantenWBlatt(pulse, i)
+		if !ok || !quantenWMerklePruefen(wurzel, quantenWPruefsumme(K, blatt, w), blatt, werte[j].Pfad, baum) {
 			return 0, 0, quantenWFehler("Stelle %d: Pruefsumme oder Pfad passt nicht", i)
 		}
 		basis, bit := quantenWZerlegen(w)
@@ -346,7 +358,7 @@ func (e *quantenSToken) nachweisOffenlegenTeil(K string, ab int, werte []quanten
 		basen[j] = e.D[i] ^ a.B ^ e.C
 		antwort[j] = a.X[i]
 	}
-	tr, fe, err := quantenSWerteAuswerten(K, e.N, e.Wurzel, stellen, basen, antwort, werte)
+	tr, fe, err := quantenSWerteAuswertenBlaetter(K, e.baum(), e.Pulse, e.Wurzel, stellen, basen, antwort, werte)
 	if err != nil {
 		return false, false, err
 	}

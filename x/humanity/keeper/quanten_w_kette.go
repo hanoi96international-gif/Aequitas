@@ -1308,9 +1308,15 @@ func quantenWToteAufraeumen(neu *quantenWRegister, blockZeit int64) bool {
 
 // quantenWOffenLesen: Anteile und Pfade aus der Transaktion (Form, Grenzen).
 func quantenWOffenLesen(in []QuantenWOffen) ([]quantenWOffenStelle, bool) {
+	return quantenWOffenLesenMax(in, quantenWPfadMax)
+}
+
+// quantenWOffenLesenMax: mit eigener Grenze der Pfadlaenge (Token ueber eine
+// Leitung: quantenSToken.pfadMax).
+func quantenWOffenLesenMax(in []QuantenWOffen, pfadMax int) ([]quantenWOffenStelle, bool) {
 	var out []quantenWOffenStelle
 	for _, o := range in {
-		if len(o.Anteile) == 0 || len(o.Anteile) > quantenWTMax || len(o.Pfad) > quantenWPfadMax || o.W != "" {
+		if len(o.Anteile) == 0 || len(o.Anteile) > quantenWTMax || len(o.Pfad) > pfadMax || o.W != "" {
 			return nil, false
 		}
 		var s quantenWOffenStelle
