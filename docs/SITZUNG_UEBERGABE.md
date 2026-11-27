@@ -9,8 +9,8 @@ dezentrales Quantengeld“.
 
 **Stand 27.11. ~14:45 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
 `claude/quantengeld-revolution-eskpsn`, Arbeitsbaum sauber, alles gepusht):
-- **Offen: Aequitas PR #691 (C2b-2b-2), Kopf 1da3736a.** CI auf dem Kopf (Run 46016328503) **ganz grün**; der
-  Doppellauf 46016320788 hatte nur noch `db-tests` laufen. Sicherheitsprüfung als PR-Kommentar steht (kein Befund,
+- **Offen: Aequitas PR #691 (C2b-2b-2).** Code-Stand 1da3736a: CI (Run 46016328503) **ganz grün**. Danach nur noch
+  Übergabe-Commits (nur Doku); vor dem Merge die CI auf dem aktuellen Kopf abwarten und dessen volle SHA nehmen. Sicherheitsprüfung als PR-Kommentar steht (kein Befund,
   der aufhält). **Nächster Handgriff: mergen** (Squash, volle Kopf-SHA aus dem PR holen), dann Zweig zurücksetzen
   (`git checkout -B claude/quantengeld-revolution-eskpsn origin/main`, `git merge -s ours --no-edit
   origin/claude/quantengeld-revolution-eskpsn`, push), Abo #691 beenden, Erinnerung `trig_01Uq6y9uDuP2A9NKncqXcVVW`
