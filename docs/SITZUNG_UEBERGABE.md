@@ -7,7 +7,17 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~18:00 UTC — HIER WEITERMACHEN** (Zweig `claude/handover-second-validator-8uibye`, alle Repos):
+**Stand 27.11. ~18:30 UTC — HIER WEITERMACHEN** (Betreiber: „Alles umsetzen“ – Probelauf Weg C, ehrliche Texte,
+Pilot Weg B vorbereiten):
+- **Offen: Aequitas-PR** (dieser Zweig): Probelauf Weg C (`quanten_s3_probelauf_test.go`: 5 Sender, Empfänger-Nachbau
+  70 % Verlust/1 % Fehler, andere Stelle abgewiesen, gewählte eingelöst, Gegenprobe „allwissend“ besteht überall),
+  ehrliche Website (`qg-h2` „Unser Ziel: …“, `logo-sub` ohne „fälschungssicher“, 12 Sprachen, Test), Einladung
+  `docs/PILOT_PRAEPARATORINNEN_GESUCHT.md` (mind. 21 bzw. 12 Präparatorinnen, DE + EN, Checkliste).
+- **Offen: App-PR** (Zweig `claude/handover-second-validator-8uibye`): `marke.leitsatz` ohne „fälschungssicher“
+  (12 Sprachen), Test `ehrlicheTexte.test.ts`.
+- Nach grüner CI mergen, Zweige zurücksetzen, Übergabe nachziehen.
+
+**Stand 27.11. ~18:00 UTC (überholt)** (Zweig `claude/handover-second-validator-8uibye`, alle Repos):
 - **Gemergt:** Aequitas **#695** (3a3674ac, C2b-2b-4 mehrere Sender + Prüfvektor der App + Mehrfach-Beweis
   `quanten_s3_beweis.go`), App **#151** (b7e5bb4f, Inhaberin melden/ziehen, `lib/quantenS3Inhaberin.ts`), App **#152**
   (09ac2729, Mehrfach-Beweis `lib/quantenS3Beweis.ts`). Keine PRs offen.
