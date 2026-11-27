@@ -7,7 +7,17 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 26.11. ~23:35 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
+**Stand 27.11. ~06:45 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
+`claude/quantengeld-revolution-eskpsn`):
+- **App 1.33.0** (App #148, 48bbf6c1): Automatik und ehrliche Texte. Build läuft: Run 45952703198
+  (`build-apk.yml`, release). Danach: Signieren (`app-signatur`, Betreiber), `release-apk.yml` mit
+  `run_id` = 45952703198, Tag `v1.33.0`.
+- **Weg C, C3 gebaut** (App-PR „Weg C, C3“ und dieser PR): Format `aequitas-empfaenger-v1`
+  (`lib/quantenSEmpfaenger.ts`), Meldung und Teilmenge gleich wie `s_kette.py --vektor-s3` (CI-Vergleich).
+  Nächster Schritt **C2** (Token-Art „Leitung“ im Knoten, schlafend, eigene Sicherheitsprüfung).
+- **Betreiber, eilig:** Deploy für #682 (Run 45911249854) **vor 11:30 UTC** freigeben (Stichtag 12:00 UTC).
+
+**Stand 26.11. ~23:35 UTC (überholt bis auf den Deploy)** (Sitzung „Quantengeld Revolution“, Zweig
 `claude/quantengeld-revolution-eskpsn` in Aequitas und Aequitas-App; Basis `main` bzw. `aequitas-app`). Keine PRs offen.
 - **Gemergt:**
   - Aequitas #681 (c9429bae): Stichtag der Pfänder 27.11.2026 09:00 UTC; Deploy 45905267726 erfolgreich. App 1.32.0
