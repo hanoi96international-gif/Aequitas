@@ -227,4 +227,18 @@ func TestLanding_QuantengeldEhrlichMitWegC(t *testing.T) {
 	if !strings.Contains(landingJS, "Weg C") || !strings.Contains(landingJS, "gewöhnliche Daten") {
 		t.Error("deutsche Texte zu Weg C / gewöhnliche Daten fehlen")
 	}
+	// Ohne Geraet (Weg C, C4) macht die Physik den Token noch NICHT
+	// unkopierbar, und in der Beta erzeugt der Betreiber allein die Bloecke:
+	// keine absoluten Aussagen (Gespraech mit dem Betreiber, 27.11.2026).
+	for _, teil := range []string{landingJS, landingQuelle} {
+		for _, v := range []string{"fairest counterfeit-proof money", "fairste fälschungssichere Geld", `"qg-h2": "Geld, das die Physik unkopierbar macht"`,
+			`"qg-h2": "Money that physics makes impossible to copy"`, ">Money that physics makes impossible to copy<"} {
+			if strings.Contains(teil, v) {
+				t.Errorf("absolute Aussage %q steht noch auf der Seite", v)
+			}
+		}
+	}
+	if !strings.Contains(landingJS, `"qg-h2": "Unser Ziel: Geld, das die Physik unkopierbar macht"`) {
+		t.Error("deutsche Überschrift ohne „Unser Ziel“")
+	}
 }
