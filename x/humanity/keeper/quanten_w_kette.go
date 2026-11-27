@@ -1476,10 +1476,16 @@ func (cs *ChainState) quantenWAnnehmen(tx Transaction) (Transaction, error) {
 			}
 		}
 	}
-	// S3: die Frist zahlt die Deckung an den Ausgeber der Vormerkung.
+	// S3: die Frist zahlt die Deckung an den Ausgeber der Vormerkung oder an
+	// die Wallet seines Nullifiers (beide vorher sperren, wie P2/P3).
 	if istQuantenS3TxArt(tx.Type) {
 		if v := cs.quantenWJetzt().S3[q.K]; v != nil {
 			konten = append(konten, v.Von)
+			if v.N != "" {
+				if w, err := cs.umzugNullifierInhaberLocked(context.Background(), v.N); err == nil && w != "" {
+					konten = append(konten, w)
+				}
+			}
 		}
 	}
 	var fertig Transaction

@@ -258,6 +258,11 @@ func TestQuantenS3_AngriffeVormerken(t *testing.T) {
 		cs.accounts.Set(a, &AccountState{Address: a, Balance: NewDecimal(100)})
 	}
 	w.abgewiesen("Ausgeber kein Mensch", w.vormerkenTx(a, keinMensch, K, w.anna, s3N, s3Deckung, z), z, "quanten_s_praep_mensch")
+	w.nullifier(pfNAnna, w.praeger)
+	w.nullifier(pfNBert, w.praeger)
+	w.abgewiesen("zwei Nullifier fuer den Ausgeber", w.vormerkenTx(w.praeger, pk, K, w.anna, s3N, s3Deckung, z), z, "quanten_s_pfand_mensch")
+	w.nullifier(pfNBert, "")
+	w.nullifier(pfNAnna, "")
 	tx := w.vormerkenTx(w.praeger, pk, K, w.anna, s3N, s3Deckung, z)
 	tx.DistributionAt = 0
 	w.abgewiesen("ohne Zeit", tx, z, "quanten_w_zeit")
@@ -434,6 +439,7 @@ func TestQuantenS3_RegisterStreng(t *testing.T) {
 		v.Teil, _ = quantenS3Kodieren(f(teil))
 	}
 	pruefen("Inhaberin = Ausgeber", func(fs *quantenWRegisterForm) { fs.S3[0].Inhaber = fs.S3[0].Von })
+	pruefen("Nullifier nicht kanonisch", func(fs *quantenWRegisterForm) { fs.S3[0].N = "0123" })
 	pruefen("gamma 0", func(fs *quantenWRegisterForm) { fs.S3[0].Gamma = 0 })
 	pruefen("theta zu gross", func(fs *quantenWRegisterForm) { fs.S3[0].Theta = quantenSThetaZehntelMax + 1 })
 	pruefen("kein Leitungsname", func(fs *quantenWRegisterForm) { fs.S3[0].Leitung = "satz-x" })
@@ -494,7 +500,7 @@ func TestQuantenS3_Annahme(t *testing.T) {
 	w.leitungSetzen(20, 50_000, s3Gamma, 1)
 	K := w.p.K
 	jetzt := nowUnix()
-	vorher := w.stand(w.cs, w.praeger)
+	w.nullifier(pfNAnna, w.praeger)
 	fertig, err := w.cs.quantenWAnnehmen(w.vormerkenTx(w.praeger, w.keys[w.praeger], K, w.anna, s3N, s3Deckung, jetzt))
 	if err != nil || fertig.QuantenW.Pfand != s3Deckung {
 		t.Fatalf("Vormerken: %v", err)
@@ -502,7 +508,14 @@ func TestQuantenS3_Annahme(t *testing.T) {
 	if err := w.nachspielen(fertig, fertig.BuchAt+3); err != nil {
 		t.Fatalf("Nachspielen Vormerken: %v", err)
 	}
-	// Die Vormerkung altern lassen (beide Knoten gleich).
+	if w.vs(w.cs, K).N != pfNAnna {
+		t.Fatal("Nullifier nicht in der Vormerkung")
+	}
+	// Der Ausgeber zieht um; die Vormerkung altert (beide Knoten gleich).
+	_, neu := neuerSchluessel(t)
+	addHuman(w.cs, neu, 0)
+	addHuman(w.nach, neu, 0)
+	w.nullifier(pfNAnna, neu)
 	for _, cs := range []*ChainState{w.cs, w.nach} {
 		reg := cs.quantenWJetzt().kopie()
 		v := *reg.S3[K]
@@ -515,13 +528,13 @@ func TestQuantenS3_Annahme(t *testing.T) {
 		cs.mu.Unlock()
 	}
 	fertig, err = w.cs.quantenWAnnehmen(s3FristTx(K))
-	if err != nil || fertig.QuantenW.PfandAn != w.praeger || w.stand(w.cs, w.praeger) != vorher {
-		t.Fatalf("Frist ueber die Annahme: %v", err)
+	if err != nil || fertig.QuantenW.PfandAn != neu || w.stand(w.cs, neu) != s3Deckung {
+		t.Fatalf("Frist ueber die Annahme (an die neue Wallet): %v %+v", err, fertig.QuantenW)
 	}
 	if err := w.nachspielen(fertig, fertig.BuchAt+3); err != nil {
 		t.Fatalf("Nachspielen Frist: %v", err)
 	}
-	if w.cs.quantenWJetzt().kodiert() != w.nach.quantenWJetzt().kodiert() || w.stand(w.nach, w.praeger) != vorher {
+	if w.cs.quantenWJetzt().kodiert() != w.nach.quantenWJetzt().kodiert() || w.stand(w.nach, neu) != s3Deckung {
 		t.Fatal("Knoten weichen ab")
 	}
 }

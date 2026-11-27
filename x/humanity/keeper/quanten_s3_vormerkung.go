@@ -20,7 +20,8 @@ package keeper
 //     BLS-Signatur selbst (drand_zufall.go) und zieht die Teilmenge
 //     (quantenS3Teilmenge, hoechstens quantenWNMax Pulse).
 //   - quanten_w_s3_frist (ohne Wallet, jeder): nach quantenS3Frist geht die
-//     Deckung an den Ausgeber zurueck; erst dann ist der Platz frei. Melden und
+//     Deckung an den Ausgeber zurueck (an die Wallet seines Nullifiers, nach
+//     einem Umzug die neue, wie P3); erst dann ist der Platz frei. Melden und
 //     Ziehen sind nach der Frist abgewiesen.
 //
 // Die Ausgabe des Tokens ueber die gezogene Teilmenge (mit der Pruefgroesse
@@ -104,7 +105,8 @@ func istQuantenS3TxArt(t string) bool {
 // gemeldet; Runde == 0: noch nicht gezogen.
 type quantenS3Vormerkung struct {
 	Von, Inhaber, Leitung string
-	Theta, Frei, Gamma    int // die Werte der Leitung zur Vormerkung
+	N                     string // Nullifier des Ausgebers ("" = keiner): die Frist zahlt an seine Wallet
+	Theta, Frei, Gamma    int    // die Werte der Leitung zur Vormerkung
 	NPuls                 int
 	Wurzel                [32]byte
 	Deckung               int64 // im Pfandtopf bis Ausgabe oder Frist
@@ -120,6 +122,7 @@ type quantenS3Vormerkung struct {
 type quantenS3VormerkungForm struct {
 	K           string `json:"k"`
 	Von         string `json:"von"`
+	N           string `json:"n,omitempty"`
 	Inhaber     string `json:"inhaber"`
 	Leitung     string `json:"leitung"`
 	Theta       int    `json:"theta"`
@@ -138,7 +141,7 @@ type quantenS3VormerkungForm struct {
 }
 
 func (v *quantenS3Vormerkung) form(K string) quantenS3VormerkungForm {
-	f := quantenS3VormerkungForm{K: K, Von: v.Von, Inhaber: v.Inhaber, Leitung: v.Leitung, Theta: v.Theta, Frei: v.Frei, Gamma: v.Gamma,
+	f := quantenS3VormerkungForm{K: K, Von: v.Von, N: v.N, Inhaber: v.Inhaber, Leitung: v.Leitung, Theta: v.Theta, Frei: v.Frei, Gamma: v.Gamma,
 		NPuls: v.NPuls, Wurzel: hex.EncodeToString(v.Wurzel[:]), Deckung: v.Deckung, Zeit: v.Zeit}
 	if v.Gemeldet != 0 {
 		f.Meldung, f.Gemeldet, f.MeldungZeit = hex.EncodeToString(v.Meldung[:]), v.Gemeldet, v.MeldungZeit
@@ -184,7 +187,7 @@ func quantenS3VormerkungenLesen(fs []quantenS3VormerkungForm, r *quantenWRegiste
 		falsch := fmt.Errorf("quanten_w: Vormerkung %d: Form", i)
 		wurzel, okW := quantenWHex32(f.Wurzel)
 		if !istHash64(f.K) || (i > 0 && f.K <= fs[i-1].K) || !kanonischeAdresse(f.Von) || von[f.Von] || !kanonischeAdresse(f.Inhaber) ||
-			f.Inhaber == f.Von || !istLeitungsName(f.Leitung) || !quantenSatzGueltig(f.Leitung) || !quantenLeitungWerteGueltig(f.Theta, f.Frei, f.Gamma) ||
+			f.Inhaber == f.Von || (f.N != "" && !umzugNullifierKanonisch(f.N)) || !istLeitungsName(f.Leitung) || !quantenSatzGueltig(f.Leitung) || !quantenLeitungWerteGueltig(f.Theta, f.Frei, f.Gamma) ||
 			f.NPuls < 1 || f.NPuls > quantenS3PulsMax || !okW || f.Deckung < quantenMindestDeckungMik || f.Zeit <= 0 {
 			return nil, falsch
 		}
@@ -198,7 +201,7 @@ func quantenS3VormerkungenLesen(fs []quantenS3VormerkungForm, r *quantenWRegiste
 			return nil, fmt.Errorf("quanten_w: zu Vormerkung %s liegt ein Pfand", f.K[:12])
 		}
 		von[f.Von] = true
-		v := &quantenS3Vormerkung{Von: f.Von, Inhaber: f.Inhaber, Leitung: f.Leitung, Theta: f.Theta, Frei: f.Frei, Gamma: f.Gamma,
+		v := &quantenS3Vormerkung{Von: f.Von, N: f.N, Inhaber: f.Inhaber, Leitung: f.Leitung, Theta: f.Theta, Frei: f.Frei, Gamma: f.Gamma,
 			NPuls: f.NPuls, Wurzel: wurzel, Deckung: f.Deckung, Zeit: f.Zeit}
 		if f.Gemeldet == 0 {
 			if f.Meldung != "" || f.MeldungZeit != 0 || f.Runde != 0 || f.Zufall != "" || f.Teil != "" {
@@ -301,8 +304,17 @@ func (cs *ChainState) quantenS3BescheidLocked(ctx context.Context, tx *Transacti
 		if !quantenS3Verfallen(v, zeit) {
 			return quantenWBefund("quanten_w_frist", "Vormerkung %s gilt bis %d", q.K[:12], sattAdd(v.Zeit, quantenS3Frist)), nil
 		}
+		// An die Wallet des Nullifiers (nach einem Umzug die neue), wie P3;
+		// ohne Wallet an das Konto selbst -- sonst bliebe der Platz fuer immer belegt.
+		an, err := cs.quantenSEmpfaengerLocked(ctx, v.Von, v.N)
+		if err != nil {
+			return quantenWBescheid{}, err
+		}
+		if an == "" {
+			an = v.Von
+		}
 		delete(neu.S3, q.K)
-		return quantenWBescheid{reg: neu, wege: []quantenWWeg{{quantenWPfandAddr, v.Von, v.Deckung}}, felder: QuantenWAngaben{Pfand: v.Deckung, PfandAn: v.Von}}, nil
+		return quantenWBescheid{reg: neu, wege: []quantenWWeg{{quantenWPfandAddr, an, v.Deckung}}, felder: QuantenWAngaben{Pfand: v.Deckung, PfandAn: an}}, nil
 
 	case quantenS3MeldenTxArt:
 		if wallet != v.Inhaber {
@@ -392,6 +404,13 @@ func (cs *ChainState) quantenS3VormerkenLocked(ctx context.Context, tx *Transact
 	if !cs.quantenSPraepIstMenschLocked(ctx, wallet) {
 		return quantenWBefund("quanten_s_praep_mensch", "Ausgeber %s ist kein registrierter Mensch", kurzAdresse(wallet)), nil
 	}
+	n, mehrere, err := cs.quantenSNullifierVonLocked(ctx, wallet)
+	if err != nil {
+		return quantenWBescheid{}, err
+	}
+	if mehrere || (n != "" && !umzugNullifierKanonisch(n)) {
+		return quantenWBefund("quanten_s_pfand_mensch", "%s: Nullifier nicht eindeutig", kurzAdresse(wallet)), nil
+	}
 	if !quantenS3KFrei(reg, q.K) {
 		return quantenWBefund("quanten_w_doppelt", "%s gibt es schon", q.K[:12]), nil
 	}
@@ -407,7 +426,7 @@ func (cs *ChainState) quantenS3VormerkenLocked(ctx context.Context, tx *Transact
 		return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ", kurzAdresse(wallet), q.Deckung), nil
 	}
 	neu := reg.kopie()
-	neu.S3[q.K] = &quantenS3Vormerkung{Von: wallet, Inhaber: q.Inhaber, Leitung: q.Leitung, Theta: theta, Frei: frei, Gamma: gamma,
+	neu.S3[q.K] = &quantenS3Vormerkung{Von: wallet, N: n, Inhaber: q.Inhaber, Leitung: q.Leitung, Theta: theta, Frei: frei, Gamma: gamma,
 		NPuls: q.NPuls, Wurzel: wurzel, Deckung: q.Deckung, Zeit: zeit}
 	return quantenWBescheid{reg: neu, wege: []quantenWWeg{{wallet, quantenWPfandAddr, q.Deckung}}, felder: QuantenWAngaben{Pfand: q.Deckung}}, nil
 }
