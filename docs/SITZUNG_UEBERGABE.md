@@ -9,9 +9,12 @@ dezentrales Quantengeld“.
 
 **Stand 27.11. ~09:45 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
 - **App v1.33.0 veröffentlicht** (09:37 UTC, Release-Schlüssel 473e9de3…). Deploy nach #686 (Run 45958681305) grün.
-- App-PR #150 (offen): Release ohne zweite Freigabe (Entscheidung des Betreibers 27.11.). Nur das Signieren braucht
-  den Betreiber; `scripts/release_lauf_pruefen.sh` prüft Herkunft, Signieren und „neuer als das neueste Release“.
-  Nach dem Merge veröffentliche ich Releases selbst (`release-apk.yml`, nach freigegebenem Signieren).
+- App #150 gemergt (8b4b5018): Release ohne zweite Freigabe (Entscheidung des Betreibers 27.11.). Nur das Signieren
+  braucht den Betreiber; `scripts/release_lauf_pruefen.sh` prüft Herkunft, Signieren und „neuer als das neueste
+  Release“. **Releases veröffentliche ich selbst** (`release-apk.yml` mit run_id und Tag, nach freigegebenem Signieren).
+- C2b in drei schlafenden Schritten: (1) Meldung Λ auf der Kette, höchstens 65.536 Pulse, Lücken-kodiert, Teilmenge
+  mit Zufall eines Blocks nach der Meldung (Vektor `quanten_s3_vektor.json`); (2) Prüfgröße `quantenSKLeitung` für
+  Token mit eingetragener Leitung; (3) Pulse statt Qubits bei den Präparatorinnen.
 - Nächster Code-Schritt **C2b** (siehe unten).
 
 **Stand 27.11. ~07:35 UTC (überholt)** (Sitzung „Quantengeld Revolution“):
