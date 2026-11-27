@@ -29,7 +29,24 @@ dezentrales Quantengeld“.
   `quantenSBestellPfandFuer`), oder Prüfgröße, die mit den Versuchen rechnet. Erst dann Stichtag mit Deploy-Wächter
   (`.github/neustart/…-nicht-verpasst.sh` nach dem Muster `quanten-leitung-nicht-verpasst.sh`, Statusfeld
   `quanten_w.s3_ab`, Test-Skript in `ci.yml`).
-- Nur Betreiber: zweiter Prüfer, C4 (Partner und Gerät).
+- **Weg bis zur Revolution** (erster Token über eine echte Quantenleitung im Hauptnetz, öffentlicher Nachweis,
+  Gutachten -- erst dann sagt die Website ohne „entwickelt“: unkopierbar durch Physik). Plan: `forschung/quantengeld/WEG_C.md`.
+  - **Ich (Code):**
+    1. C2b-2b-3 Ausgabe über die Teilmenge mit Pfand gegen Abbruch nach dem Ziehen (siehe oben).
+    2. C2b-3 Pulse statt Qubits: Präparatorinnen binden ihre Pulse mit Prüfsummen, Ablauf S auf der Teilmenge.
+    3. Stichtage setzen (je mit Deploy-Wächter, nach Deploy des Betreibers). Schlafend sind heute (MaxInt64):
+       `quantenLeitungAbUnix` (Register der Leitungen), `quantenS3AbUnix` (Ausgabe über eine Leitung),
+       `quantenSPraepPfandAbUnix` (P2, Pfand je Präparatorin), `offlineAbUnix` (Offline-Bargeld, nicht Weg C).
+  - **Nur Betreiber:**
+    4. Deploys nach #690 und #691 in `produktion` freigeben. Vor jedem Stichtag müssen alle Knoten diesen Stand haben.
+    5. Zweiter Prüfer: Ohne ihn keine Leitung im Register (⅔ der Prüfer, mindestens 5).
+    6. C4 Partner und Gerät: Sender bei den Präparatorinnen, Empfänger bei der Inhaberin (Bristol: Handsender;
+       Cambridge: Theorie; Vorlage `forschung/quantengeld/ANSCHREIBEN.md`).
+  - **Mit Partner, dann alle:**
+    7. C5 Messung am Gerät: Fehler E, Verkippung θ, Mehrphotonen-Anteil, Seitenkanäle. Erst damit eine echte
+       Leitung im Register (θ, frei, γ) und eine echte Prüfgröße.
+    8. C6 erster Token über die Leitung im Hauptnetz, öffentlicher Nachweis, Gutachten.
+  - **Engpass ist nicht der Code** (Schritte 1 bis 3: wenige Sitzungen), sondern Schritte 5 bis 7.
 - Arbeitsweise wie bisher: Sicherheitsabschnitt (5 Fragen) in jedem PR, eigene Sicherheitsprüfung als Kommentar bei
   Konsens, Missbrauchstests und Mutationen, `go test -race` grün, Übergabe nach jedem Merge.
 
