@@ -295,7 +295,20 @@ func (a *qsAusfallNetz) einreichen(ctx context.Context, art, wallet string, zeit
 
 func qsVierKnoten(t *testing.T, ausfall bool) { qsVierKnotenModus(t, ausfall, false, false) }
 
+// TestVierKnotenQuantenSPfand_RealDB: das Ausgabe-Werkzeug mit den Pfaendern
+// (P3, Hauptnetz seit 27.11.2026 09:00 UTC). Die Inhaberin des Werkzeugs hat
+// einen Wegwerfschluessel ohne Guthaben; ohne Pfandgeber wiese die Kette die
+// Bindung ab ("keine 2200000 Mikro-AEQ fuer das Pfand"). Der Ausgeber gibt
+// das Pfand, jeder Knoten fuehrt es danach unter seinem Konto.
+func TestVierKnotenQuantenSPfand_RealDB(t *testing.T) {
+	qsVierKnotenModusPfand(t, false, true, false, true)
+}
+
 func qsVierKnotenModus(t *testing.T, ausfall, abschnitte, rollen bool) {
+	qsVierKnotenModusPfand(t, ausfall, abschnitte, rollen, false)
+}
+
+func qsVierKnotenModusPfand(t *testing.T, ausfall, abschnitte, rollen, pfand bool) {
 	skipUnlessRealDBBenchEnv(t)
 	if testing.Short() {
 		t.Skip("laeuft in echter Zeit")
@@ -338,6 +351,9 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte, rollen bool) {
 	// (quanten_s_inhaberin_pfand_test.go, quanten_s_faelschung_test.go,
 	// quanten_s_pfaender_grenze_test.go).
 	quantenSPfaenderAbOverride.Store(math.MaxInt64)
+	if pfand {
+		quantenSPfaenderAbOverride.Store(nowUnix() - 60)
+	}
 	altBetreiber := quantenWBetreiberVon
 	t.Cleanup(func() {
 		quantenWAbOverride.Store(0)
@@ -555,6 +571,26 @@ func qsVierKnotenModus(t *testing.T, ausfall, abschnitte, rollen bool) {
 			time.Sleep(250 * time.Millisecond)
 		}
 	}
+	// Pfand der Inhaberin: auf jedem lebenden Knoten vom Ausgeber gegeben,
+	// Deckung + 10 %, und es liegt im Pfandtopf, bis die Frist um ist.
+	if pfand {
+		for _, k := range netz.ks {
+			if k.aus.Load() {
+				continue
+			}
+			cs, _, _ := k.teile()
+			cs.mu.RLock()
+			p, da := cs.quantenWJetzt().IPfand[erg.K]
+			cs.mu.RUnlock()
+			if !da || p.Konto != ausgeber.addr || p.Betrag != quantenSIPfandFuer(2_000_000) || p.Ende == 0 {
+				t.Fatalf("Knoten %d: Pfand der Inhaberin %+v (da=%v), erwartet vom Ausgeber %s, %d Mikro-AEQ, Token beendet", k.i, p, da, ausgeber.addr, quantenSIPfandFuer(2_000_000))
+			}
+			if a, ok := vierKonto(cs, quantenWPfandAddr); !ok || a.Balance.Micro() < p.Betrag {
+				t.Fatalf("Knoten %d: Pfandtopf haelt das Pfand nicht", k.i)
+			}
+		}
+		t.Logf("Pfand der Inhaberin: %d Mikro-AEQ vom Ausgeber, auf allen Knoten gleich", quantenSIPfandFuer(2_000_000))
+	}
 	// Jeder Dienst raeumt seinen Tresor.
 	ende := time.Now().Add(30 * time.Second)
 	for {
@@ -690,7 +726,7 @@ func qsRollenVierKnoten(t *testing.T, netz *vierKnotenNetz, leiter int, ausgeber
 	if err != nil {
 		t.Fatal(err)
 	}
-	vl, err := quantenSInhaberinEinloesen(ctx, inh, frist, dat, func() error { return nil }, b, &log)
+	vl, err := quantenSInhaberinEinloesen(ctx, inh, frist, dat, func() error { return nil }, b, nil, &log)
 	if err != nil {
 		t.Fatal(err)
 	}

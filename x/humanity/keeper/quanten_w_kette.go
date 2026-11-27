@@ -1375,7 +1375,11 @@ func quantenWKonten(tx *Transaction) []string {
 		k = append(k, w)
 	}
 	if q := tx.QuantenW; q != nil {
-		for _, a := range []string{q.PfandAn, q.WertAn} {
+		// PfandVon (P3): der Pfandgeber einer Bindung zahlt das Pfand der
+		// Inhaberin. Ohne ihn wies die Annahme jede Bindung mit Pfandgeber als
+		// "wiederholen" ab (der Weg Pfandgeber -> Pfandtopf lag ausserhalb der
+		// Sperre), und das Nachspielen luede sein Konto nicht.
+		for _, a := range []string{q.PfandAn, q.WertAn, q.PfandVon} {
 			if a != "" {
 				k = append(k, strings.ToLower(a))
 			}
