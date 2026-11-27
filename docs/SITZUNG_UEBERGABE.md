@@ -7,7 +7,20 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~16:00 UTC — HIER WEITERMACHEN** (Sitzung „Weiter mit Übergabe / zweiter Validator“, Zweig
+**Stand 27.11. ~17:00 UTC — HIER WEITERMACHEN** (Zweig `claude/handover-second-validator-8uibye`):
+- **Offen: PR „Weg C, C2b-2b-3b: Ausgabe über die gezogene Teilmenge“** (Konsens, schlafend, `quanten_s3_ausgabe.go`).
+  Sicherheitsprüfung als PR-Kommentar. Nächster Handgriff: CI grün → mergen (Squash, volle Kopf-SHA), Zweig zurücksetzen
+  (`git checkout -B claude/handover-second-validator-8uibye origin/main`, `git merge -s ours --no-edit
+  origin/claude/handover-second-validator-8uibye`, push), Abo beenden, Übergabe nachziehen.
+- Inhalt: Ausgabe eines vorgemerkten K nur nach dem Ziehen, vor der Frist, mit Ausgeber/Inhaberin/Wurzel/Deckung der
+  Vormerkung, n = Teilmenge; k = `quantenSKLeitung` (festgehaltene θ/frei), k = 0 oder 2k > n abgewiesen. Token-Felder
+  `pulse`, `n_puls`, `k_min` (fehlen bei bisherigen Token → StateRoot gleich). Einlösen/Nachweis: Blatt teil[i] im Baum
+  über **alle** Pulse (Pfade bis 26, bisherige 14). Stichprobe beim Anmelden ≥ k_min. Deckung Pfandtopf → W-Topf, Pfand
+  zurück. 27 Mutationen rot. Spezifikation: `ausgeben_s3` ohne erklärtes k; Selbsttest mit echter Prägung bis Einlösen.
+- **Danach C2b-2b-3c** (`WEG_C.md`): Werkzeuge/App (kleinere Offenlegungs-Teile wegen langer Pfade, Annahmestelle prüft
+  `pulse`/`k_min`), dann Stichtag mit Deploy-Wächter. Braucht eine eingetragene Leitung und C4 (Betreiber).
+
+**Stand 27.11. ~16:00 UTC (überholt)** (Sitzung „Weiter mit Übergabe / zweiter Validator“, Zweig
 `claude/handover-second-validator-8uibye` in allen vier Repos):
 - **#691 war schon gemergt** (9ced925); Erinnerung und Abo waren weg. biometric-beta: Dependabot #129–#133 gemergt
   (alle grün, nur Versionen mit Hash-Pins).
