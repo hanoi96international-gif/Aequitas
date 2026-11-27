@@ -105,6 +105,8 @@ jobs:
       - run: python3 -I forschung/quantengeld/s_kette.py --vektor-s3-meldung | cmp - x/humanity/keeper/testdata/quanten_s3_meldung_vektor.json
       # Weg C (C2b-2b-4): mehrere Sender -- Abschnitte, Meldung und Teilmenge je Abschnitt.
       - run: python3 -I forschung/quantengeld/s_kette.py --vektor-s3-sender | cmp - x/humanity/keeper/testdata/quanten_s3_sender_vektor.json
+      # Weg C (C2b-2b-3c): Mehrfach-Beweis fuer die Blaetter eines Tokens, gleich in Knoten und App.
+      - run: python3 -I forschung/quantengeld/s_kette.py --vektor-s3-beweis | cmp - x/humanity/keeper/testdata/quanten_s3_beweis_vektor.json
       # Weg C (C2b-2b-3a): Abbruch nach der Meldung hilft einem Faelscher je Versuch hoechstens mit 2^-39.
       - run: python3 -I forschung/quantengeld/s3_versuch.py --schnell
       - run: python3 -I forschung/quantengeld/s3_geraet.py --selbsttest
