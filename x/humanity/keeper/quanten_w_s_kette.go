@@ -568,6 +568,11 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
 	if _, da := reg.IPfand[q.K]; da {
 		return quantenWBefund("quanten_w_doppelt", "zu %s liegt noch das Pfand einer Inhaberin", q.K[:12]), nil
 	}
+	// Weg C: ein vorgemerktes K gibt erst die Ausgabe ueber die Leitung aus
+	// (C2b-2b-3); bis dahin keine andere Ausgabe mit diesem K.
+	if reg.S3[q.K] != nil {
+		return quantenWBefund("quanten_w_doppelt", "%s ist ueber eine Leitung vorgemerkt", q.K[:12]), nil
+	}
 	if len(reg.Token) >= quantenWTokenHoechstens {
 		return quantenWBefund("quanten_w_voll", "Register voll (%d Token)", len(reg.Token)), nil
 	}

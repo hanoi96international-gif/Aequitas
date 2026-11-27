@@ -7,7 +7,37 @@ Repos); davor ~13:40 UTC Sitzung „Weiter“ (`claude/weiter-uw2p42`), davor ~1
 „Weitermachen“ (`claude/weitermachen-qbkbfs`). Auftrag des Betreibers: „Alles erledigen für
 dezentrales Quantengeld“.
 
-**Stand 27.11. ~11:00 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“):
+**Stand 27.11. ~14:45 UTC — HIER WEITERMACHEN** (Sitzung „Quantengeld Revolution“, Zweig
+`claude/quantengeld-revolution-eskpsn`, Arbeitsbaum sauber, alles gepusht):
+- **Offen: Aequitas PR #691 (C2b-2b-2).** Code-Stand 1da3736a: CI (Run 46016328503) **ganz grün**. Danach nur noch
+  Übergabe-Commits (nur Doku); vor dem Merge die CI auf dem aktuellen Kopf abwarten und dessen volle SHA nehmen. Sicherheitsprüfung als PR-Kommentar steht (kein Befund,
+  der aufhält). **Nächster Handgriff: mergen** (Squash, volle Kopf-SHA aus dem PR holen), dann Zweig zurücksetzen
+  (`git checkout -B claude/quantengeld-revolution-eskpsn origin/main`, `git merge -s ours --no-edit
+  origin/claude/quantengeld-revolution-eskpsn`, push), Abo #691 beenden, Erinnerung `trig_01Uq6y9uDuP2A9NKncqXcVVW`
+  (15:20 UTC) löschen, diese Übergabe nachziehen.
+- Inhalt #691: `quanten_s3_vormerkung.go`, vier Arten `quanten_w_s3_vormerken`, `…_melden`, `…_ziehen`, `…_frist`,
+  schlafend hinter `quantenS3AbUnix` (MaxInt64) **und** `quantenLeitungAktiv`. Vormerken nur durch einen Menschen,
+  Deckung in den Pfandtopf, θ/frei/γ der Leitung in der Vormerkung festgehalten, Nullifier des Ausgebers dabei; je
+  Ausgeber eine, höchstens 16. Melden genau einmal, ≤ 128 KiB Hex, nur SHA-256 im Register. Ziehen: Meldung noch
+  einmal + feste drand-Runde (erste ab Meldung + 600 s; Meldezeit höchstens 120 s zurückdatiert). Frist nach 1 h,
+  zahlt an die Wallet des Nullifiers (Umzug, wie P3). Vorgemerktes K: kein Prägen, keine S-Ausgabe, keine Bestellung.
+  Spezifikation `s_kette.KetteS3` angepasst; 28 Mutationen im Knoten rot.
+- Gemergt heute zuvor: #689 (fff022c8, Spezifikation `KetteS3`), **#690 (7a976256, γ_det im Register der Leitungen)**.
+- **Betreiber:** Deploy nach #690 (und nach #691) in `produktion` freigeben -- eilt nicht, alles schläft. Vor jedem
+  Stichtag der Leitungen bzw. von S3 müssen alle Knoten diesen Stand haben (strenges Laden des Registers).
+- **Danach C2b-2b-3** (Plan in `forschung/quantengeld/WEG_C.md`): Ausgabe über die gezogene Teilmenge (n = Pulse der
+  Teilmenge, Prüfgröße je Annahmestelle ≥ `quantenSKLeitung` mit den festgehaltenen θ/frei, Wurzel und Deckung der
+  Vormerkung, Deckung genau einmal in den W-Topf). **Befund, Bedingung vor dem Stichtag:** Abbruch nach dem Ziehen
+  kostet heute nichts (Deckung kommt zurück); Ausgeber und Inhaberin im Bund könnten neu vormerken, bis eine
+  Teilmenge viele freie Pulse trägt (wie B2c). Lösung: Pfand, das beim Abbruch nach dem Ziehen verfällt (wie
+  `quantenSBestellPfandFuer`), oder Prüfgröße, die mit den Versuchen rechnet. Erst dann Stichtag mit Deploy-Wächter
+  (`.github/neustart/…-nicht-verpasst.sh` nach dem Muster `quanten-leitung-nicht-verpasst.sh`, Statusfeld
+  `quanten_w.s3_ab`, Test-Skript in `ci.yml`).
+- Nur Betreiber: zweiter Prüfer, C4 (Partner und Gerät).
+- Arbeitsweise wie bisher: Sicherheitsabschnitt (5 Fragen) in jedem PR, eigene Sicherheitsprüfung als Kommentar bei
+  Konsens, Missbrauchstests und Mutationen, `go test -race` grün, Übergabe nach jedem Merge.
+
+**Stand 27.11. ~11:00 UTC (überholt)** (Sitzung „Quantengeld Revolution“):
 - Gemergt: #687 (bbd7d3c8, C2b-1 Meldung und Teilmenge, nur Rechnung), **#688 (51b15dfe, Befund und Abhilfe):**
   seit dem Stichtag der Pfänder (09:00 UTC) nahm die Kette keine Bindung mit Pfandgeber an (`pfand_von` fehlte in
   `quantenWKonten`, Annahme wies als „wiederholen“ ab) -- App ab 1.32.0 und Werkzeuge betroffen. Jetzt gesperrt und

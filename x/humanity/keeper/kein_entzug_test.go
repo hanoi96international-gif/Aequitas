@@ -121,9 +121,16 @@ var replayArten = map[string]geldArt{
 	"quanten_w_s_faelschung_anmelden":   geldNurGutschrift,
 	"quanten_w_s_faelschung_offenlegen": geldNurGutschrift,
 	// Weg B (quanten_s_bestellung.go): Bestellung (Pfand mit Unterschrift), Los und Frist.
-	"quanten_w_s_bestellen":            geldUnterschrieben, // nimmt mit Unterschrift das Pfand vom Ausgeber
-	"quanten_w_s_losen":                geldNurGutschrift,
-	"quanten_w_s_bestellung_frist":     geldNurGutschrift, // Pfand vom Topf ans Grundeinkommen
+	"quanten_w_s_bestellen":        geldUnterschrieben, // nimmt mit Unterschrift das Pfand vom Ausgeber
+	"quanten_w_s_losen":            geldNurGutschrift,
+	"quanten_w_s_bestellung_frist": geldNurGutschrift, // Pfand vom Topf ans Grundeinkommen
+	// Weg C, S3 (quanten_s3_vormerkung.go): Vormerken nimmt mit Unterschrift die
+	// Deckung vom Ausgeber; Melden und Ziehen bewegen kein Geld, die Frist zahlt
+	// nur aus dem Pfandtopf an den Ausgeber zurueck.
+	"quanten_w_s3_vormerken":           geldUnterschrieben,
+	"quanten_w_s3_melden":              geldNurGutschrift,
+	"quanten_w_s3_ziehen":              geldNurGutschrift,
+	"quanten_w_s3_frist":               geldNurGutschrift,
 	"umlauf":                           geldRegelAusnahme,
 	"unternehmen_eroeffnen":            geldUnterschrieben,
 	"vorbehalt":                        geldUnterschrieben,
@@ -217,6 +224,11 @@ var ersetzbareKonstanten = map[string]string{
 	// quanten_s_faelschung.go
 	"quantenSFaelschungAnmeldenTxArt":   quantenSFaelschungAnmeldenTxArt,
 	"quantenSFaelschungOffenlegenTxArt": quantenSFaelschungOffenlegenTxArt,
+	// quanten_s3_vormerkung.go
+	"quantenS3VormerkenTxArt": quantenS3VormerkenTxArt,
+	"quantenS3MeldenTxArt":    quantenS3MeldenTxArt,
+	"quantenS3ZiehenTxArt":    quantenS3ZiehenTxArt,
+	"quantenS3FristTxArt":     quantenS3FristTxArt,
 }
 
 // replaySwitchArten liest die Arten des Nachspiel-Switches aus block.go

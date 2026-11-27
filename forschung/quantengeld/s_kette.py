@@ -444,29 +444,41 @@ def s3_dekodieren(text: str) -> list[int]:
 
 # ------------------------------------------- S3: der Ablauf ueber eine Leitung
 #
-# Spezifikation fuer C2b (WEG_C.md), noch nicht im Knoten. Reihenfolge:
+# Spezifikation fuer C2b (WEG_C.md). Im Knoten: quanten_s3_vormerkung.go
+# (Vormerken, Melden, Ziehen, Frist; C2b-2b-2), die Ausgabe folgt (C2b-2b-3).
+# Reihenfolge:
 #
 #   1. vormerken (Ausgeber): K, Inhaberin, eingetragene Leitung, Zahl der
 #      Pulse N, Wurzel der Pruefsummen ueber ALLE N Pulse und die Deckung.
 #      Die Praeparatorinnen binden ihre Werte, BEVOR ein Puls die Leitung
 #      verlaesst; die Deckung liegt ab hier im Topf (wer vormerkt, zahlt --
-#      das begrenzt Muell). Ohne Ausgabe innerhalb der Frist geht sie zurueck.
+#      das begrenzt Muell). Die Vormerkung haelt die Messwerte der Leitung
+#      fest (theta, frei, gamma): was das Register danach eintraegt, aendert
+#      diese Vormerkung nicht. Je Ausgeber eine offene Vormerkung.
 #   2. melden (Inhaberin, genau einmal): Lambda, die gemessenen Pulse, in der
-#      einen Kodierung (s3_kodieren). Mindestens gamma_det * N der Leitung.
-#      Ein zweites Melden gibt es nicht: sonst koennte sie neu wuerfeln,
-#      sobald sie den Zufall kennt.
-#   3. ziehen (jeder, genau einmal): Zufall aus einer Zeit NACH der Meldung
-#      bestimmt die Teilmenge (s3_teilmenge). Stelle i des Tokens ist Puls
-#      teil[i].
+#      einen Kodierung (s3_kodieren), hoechstens S3_MELDUNG_TX_HEX_MAX Zeichen.
+#      Mindestens gamma_det * N der Leitung. Ein zweites Melden gibt es
+#      nicht: sonst koennte sie neu wuerfeln, sobald sie den Zufall kennt. Die
+#      Kette behaelt nur den Hash der Meldung und die Zahl der Pulse.
+#   3. ziehen (jeder, genau einmal): die Meldung noch einmal (Hash wie
+#      gemeldet) und Zufall aus einer Zeit mindestens S3_ZIEH_ABSTAND NACH der
+#      Meldung bestimmen die Teilmenge (s3_teilmenge). Stelle i des Tokens ist
+#      Puls teil[i]. Im Knoten ist der Zufall die erste drand-Runde ab
+#      Meldung + S3_ZIEH_ABSTAND (wie das Los in Weg B, s_weg_b.py).
 #   4. ausgeben (Ausgeber): n = len(teil), Pruefgroesse je Annahmestelle
 #      mindestens k_leitung(tol, t, v, theta, frei) der Leitung, 2k <= n. Die
 #      Wurzel ist die der Vormerkung. Danach weiter wie Variante S.
+#   5. frist (jeder): nach S3_FRIST ohne Ausgabe geht die Deckung an den
+#      Ausgeber zurueck, und erst dann ist der Platz wieder frei. Melden,
+#      Ziehen und Ausgeben sind nach der Frist abgewiesen.
 #
 # Die Leitung (Messwerte theta, frei, gamma_det) traegt das Register ein
 # (C2a, zwei Drittel der Pruefer); hier steht sie als Eintrag bereit.
 
 S3_FRIST = 3600            # Sekunden von der Vormerkung bis zur Ausgabe
-S3_VORMERKUNGEN_MAX = 64   # offene Vormerkungen zugleich
+S3_VORMERKUNGEN_MAX = 16   # offene Vormerkungen zugleich (= Token im Register)
+S3_ZIEH_ABSTAND = 600      # Meldung bis Zufall (wie das Los in Weg B)
+S3_MELDUNG_TX_HEX_MAX = 128 << 10  # Meldung in einer Transaktion (Endpunkt 160 KiB)
 
 
 class KetteS3(KetteS):
@@ -481,62 +493,78 @@ class KetteS3(KetteS):
             raise Abgewiesen("Leitung: Form")
         self.leitungen[name] = {"theta": theta_zehntel, "frei": frei_ppm, "gamma": gamma_ppm}
 
-    def _verfallen(self, zeit: int):
-        for K in [K for K, e in self.vorgemerkt.items() if zeit > e["zeit"] + S3_FRIST]:
-            e = self.vorgemerkt.pop(K)
-            self.topf -= e["deckung"]
-            self.konten[e["von"]] += e["deckung"]
+    @staticmethod
+    def _verfallen(e: dict, zeit: int) -> bool:
+        return zeit > e["zeit"] + S3_FRIST
 
     def vormerken(self, K: str, von: str, inhaber: str, leitung: str, n_puls: int, wurzel: bytes,
                   deckung: int, zeit: int):
-        self._verfallen(zeit)
         if K in self.token or K in self.vorgemerkt:
             raise Abgewiesen("Vormerken: K schon da")
         if leitung not in self.leitungen:
             raise Abgewiesen("Vormerken: Leitung nicht eingetragen")
         if not (1 <= n_puls <= N_PULS_MAX) or len(wurzel) != 32 or deckung <= 0 or inhaber == von:
             raise Abgewiesen("Vormerken: Form")
+        if any(e["von"] == von for e in self.vorgemerkt.values()):
+            raise Abgewiesen("Vormerken: Ausgeber hat schon eine offene Vormerkung")
         if len(self.vorgemerkt) >= S3_VORMERKUNGEN_MAX:
             raise Abgewiesen("Vormerken: zu viele offene Vormerkungen")
         if self.konten.get(von, 0) < deckung:
             raise Abgewiesen("Vormerken: Deckung")
         self.konten[von] -= deckung
         self.topf += deckung
-        self.vorgemerkt[K] = {"von": von, "inhaber": inhaber, "leitung": leitung, "n_puls": n_puls,
-                              "wurzel": wurzel, "deckung": deckung, "zeit": zeit,
-                              "lam": None, "meldung_zeit": None, "teil": None}
+        self.vorgemerkt[K] = {"von": von, "inhaber": inhaber, "leitung": dict(self.leitungen[leitung]),
+                              "n_puls": n_puls, "wurzel": wurzel, "deckung": deckung, "zeit": zeit,
+                              "meldung": None, "gemeldet": 0, "meldung_zeit": None, "teil": None}
 
     def melden(self, K: str, von: str, text: str, zeit: int):
-        self._verfallen(zeit)
         e = self.vorgemerkt.get(K)
         if e is None or von != e["inhaber"]:
             raise Abgewiesen("Melden: unbekannt oder nicht die Inhaberin")
-        if e["lam"] is not None:
+        if self._verfallen(e, zeit):
+            raise Abgewiesen("Melden: Vormerkung verfallen")
+        if e["meldung"] is not None:
             raise Abgewiesen("Melden: schon gemeldet")
         if zeit <= e["zeit"]:
             raise Abgewiesen("Melden: nicht nach der Vormerkung")
-        lam = s3_meldung(e["n_puls"], self.leitungen[e["leitung"]]["gamma"], s3_dekodieren(text))
-        e["lam"], e["meldung_zeit"] = lam, zeit
+        if len(text) > S3_MELDUNG_TX_HEX_MAX:
+            raise Abgewiesen("Melden: Meldung zu lang fuer eine Transaktion")
+        lam = s3_meldung(e["n_puls"], e["leitung"]["gamma"], s3_dekodieren(text))
+        e["meldung"], e["gemeldet"], e["meldung_zeit"] = hashlib.sha256(text.encode()).digest(), len(lam), zeit
 
-    def ziehen(self, K: str, zufall: bytes, zufall_zeit: int):
+    def ziehen(self, K: str, text: str, zufall: bytes, zufall_zeit: int):
         e = self.vorgemerkt.get(K)
-        if e is None or e["lam"] is None:
+        if e is None or e["meldung"] is None:
             raise Abgewiesen("Ziehen: nicht gemeldet")
+        if self._verfallen(e, zufall_zeit):
+            raise Abgewiesen("Ziehen: Vormerkung verfallen")
         if e["teil"] is not None:
             raise Abgewiesen("Ziehen: schon gezogen")
-        e["teil"] = s3_teilmenge(K, e["lam"], zufall, e["meldung_zeit"], zufall_zeit)
+        if hashlib.sha256(text.encode()).digest() != e["meldung"]:
+            raise Abgewiesen("Ziehen: nicht die gemeldete Meldung")
+        if zufall_zeit < e["meldung_zeit"] + S3_ZIEH_ABSTAND:
+            raise Abgewiesen("Ziehen: Zufall zu nah an der Meldung")
+        e["teil"] = s3_teilmenge(K, s3_dekodieren(text), zufall, e["meldung_zeit"], zufall_zeit)
+
+    def frist(self, K: str, zeit: int):
+        e = self.vorgemerkt.get(K)
+        if e is None or not self._verfallen(e, zeit):
+            raise Abgewiesen("Frist: keine verfallene Vormerkung")
+        del self.vorgemerkt[K]
+        self.topf -= e["deckung"]
+        self.konten[e["von"]] += e["deckung"]
 
     def k_note(self, K: str, tol: int, t: int, n_val: int) -> int:
-        e = self.vorgemerkt[K]
-        l = self.leitungen[e["leitung"]]
+        l = self.vorgemerkt[K]["leitung"]
         return wk.k_leitung(tol, t, n_val, l["theta"], l["frei"])
 
     def ausgeben_s3(self, K: str, k_je_stelle: int, proben: list[bytes], stellen: list[str],
                     t: int, n_val: int, tol: int, zeit: int, probe_art: int = 2):
-        self._verfallen(zeit)
         e = self.vorgemerkt.get(K)
         if e is None or e["teil"] is None:
             raise Abgewiesen("Ausgabe S3: Teilmenge nicht gezogen")
+        if self._verfallen(e, zeit):
+            raise Abgewiesen("Ausgabe S3: Vormerkung verfallen")
         n = len(e["teil"])
         kn = self.k_note(K, tol, t, n_val)
         if kn == 0 or k_je_stelle < kn or 2 * k_je_stelle > n:
@@ -572,48 +600,78 @@ def selbsttest_s3(soll, abgewiesen):
     k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 1000, 10)
     soll(k3.konten["aus"] == 9000 and k3.topf == 1000, "Deckung bei der Vormerkung im Topf")
     abgewiesen(lambda: k3.vormerken(K, "aus", "anna", "leitung-test", 100_000, w, 1000, 11), "K doppelt vorgemerkt")
+    abgewiesen(lambda: k3.vormerken("cd" * 32, "aus", "anna", "leitung-test", 100_000, w, 1000, 11),
+               "zweite offene Vormerkung desselben Ausgebers")
+    # Spaeter eingetragene Werte aendern die Vormerkung nicht.
+    k3.leitung("leitung-test", 20, 50_000, 1)
+    soll(k3.vorgemerkt[K]["leitung"]["gamma"] == 200_000, "Vormerkung haelt gamma fest")
     abgewiesen(lambda: k3.ausgeben_s3(K, 128, [b"x" * 32] * 2, ["s0", "s1"], 3, 7, 4, 12), "Ausgabe vor dem Ziehen")
-    abgewiesen(lambda: k3.ziehen(K, bytes(32), 20), "Ziehen vor der Meldung")
     lam = sorted(rng.sample(range(100_000), 20_000))
-    abgewiesen(lambda: k3.melden(K, "mallory", s3_kodieren(lam), 20), "fremde Meldung")
-    abgewiesen(lambda: k3.melden(K, "anna", s3_kodieren(lam), 10), "Meldung im Moment der Vormerkung")
+    text = s3_kodieren(lam)
+    abgewiesen(lambda: k3.ziehen(K, text, bytes(32), 20 + S3_ZIEH_ABSTAND), "Ziehen vor der Meldung")
+    abgewiesen(lambda: k3.melden(K, "mallory", text, 20), "fremde Meldung")
+    abgewiesen(lambda: k3.melden(K, "anna", text, 10), "Meldung im Moment der Vormerkung")
     abgewiesen(lambda: k3.melden(K, "anna", s3_kodieren(lam[:19_999]), 20), "Meldung unter gamma_det")
     abgewiesen(lambda: k3.melden(K, "anna", s3_kodieren(lam[:-1] + [100_000]), 20), "Puls ausserhalb N")
-    k3.melden(K, "anna", s3_kodieren(lam), 20)
-    anders = sorted(rng.sample(range(100_000), 20_000))
-    abgewiesen(lambda: k3.melden(K, "anna", s3_kodieren(anders), 21), "zweite, gueltige Meldung (neu wuerfeln)")
-    abgewiesen(lambda: k3.ziehen(K, bytes(32), 20), "Zufall aus der Zeit der Meldung")
-    k3.ziehen(K, bytes(range(32)), 21)
-    abgewiesen(lambda: k3.ziehen(K, bytes(32), 22), "zweites Ziehen")
+    soll(len(s3_kodieren(list(range(MELDUNG_MAX)))) == 2 * MELDUNG_MAX <= S3_MELDUNG_TX_HEX_MAX,
+         "MELDUNG_MAX Pulse mit Luecke 0 passen in eine Transaktion")
+    # MELDUNG_MAX Pulse in N, 265 Luecken mit zwei Gruppen: gueltig fuer diese
+    # Vormerkung, aber laenger als eine Transaktion.
+    lang_lam = [129 * j for j in range(265)] + list(range(129 * 265, 129 * 265 + MELDUNG_MAX - 265))
+    lang = s3_kodieren(lang_lam)
+    soll(len(lang) > S3_MELDUNG_TX_HEX_MAX and s3_meldung(100_000, 200_000, s3_dekodieren(lang)) == lang_lam,
+         "gueltige Meldung, laenger als eine Transaktion")
+    abgewiesen(lambda: k3.melden(K, "anna", lang, 20), "Meldung zu lang fuer eine Transaktion")
+    k3.melden(K, "anna", text, 20)
+    soll(k3.vorgemerkt[K]["gemeldet"] == 20_000, "Zahl der gemeldeten Pulse")
+    anders = s3_kodieren(sorted(rng.sample(range(100_000), 20_000)))
+    abgewiesen(lambda: k3.melden(K, "anna", anders, 21), "zweite, gueltige Meldung (neu wuerfeln)")
+    abgewiesen(lambda: k3.ziehen(K, text, bytes(32), 20), "Zufall aus der Zeit der Meldung")
+    abgewiesen(lambda: k3.ziehen(K, text, bytes(32), 20 + S3_ZIEH_ABSTAND - 1), "Zufall vor dem Abstand")
+    abgewiesen(lambda: k3.ziehen(K, anders, bytes(range(32)), 20 + S3_ZIEH_ABSTAND), "Ziehen mit einer anderen Meldung")
+    k3.ziehen(K, text, bytes(range(32)), 20 + S3_ZIEH_ABSTAND)
+    abgewiesen(lambda: k3.ziehen(K, text, bytes(32), 22 + S3_ZIEH_ABSTAND), "zweites Ziehen")
     teil = k3.vorgemerkt[K]["teil"]
     soll(len(teil) == wk.N_MAX and set(teil) <= set(lam), "Teilmenge aus der Meldung, N_MAX Stellen")
+    soll(teil == s3_teilmenge(K, lam, bytes(range(32)), 20, 20 + S3_ZIEH_ABSTAND), "Teilmenge wie s3_teilmenge")
+    abgewiesen(lambda: k3.frist(K, 10 + S3_FRIST), "Frist vor dem Verfall")
     kn = k3.k_note(K, 4, 3, 7)
     soll(kn == wk.k_leitung(4, 3, 7, 20, 50_000) and kn > wk.k_note(4, 3, 7), "Pruefgroesse der Leitung ueber der des Chips")
     proben = [b"p" * 32, b"q" * 32]
     abgewiesen(lambda: k3.ausgeben_s3(K, kn - 1, proben, ["s0", "s1"], 3, 7, 4, 30), "Pruefgroesse unter der Leitung")
     abgewiesen(lambda: k3.ausgeben_s3(K, wk.N_MAX // 2 + 1, proben, ["s0", "s1"], 3, 7, 4, 30), "2k > n")
     abgewiesen(lambda: k3.ausgeben_s3(K, kn, proben, ["s0", "s0"], 3, 7, 4, 30), "Stellen doppelt")
+    abgewiesen(lambda: k3.ausgeben_s3(K, kn, proben, ["s0", "s1"], 3, 7, 4, 11 + S3_FRIST), "Ausgabe nach der Frist")
     soll(k3.konten["aus"] == 9000 and k3.topf == 1000, "abgewiesene Ausgabe zahlt nichts doppelt und nichts zurueck")
     k3.ausgeben_s3(K, kn, proben, ["s0", "s1"], 3, 7, 4, 30)
     e = k3.token[K]
     soll(e["n"] == wk.N_MAX and e["pulse"] == teil and e["wurzel"] == w and e["deckung"] == 1000, "Token ueber die Teilmenge")
     soll(k3.konten["aus"] == 9000 and k3.topf == 1000 and K not in k3.vorgemerkt, "Deckung genau einmal im Topf")
-    # Verfall: ohne Ausgabe geht die Deckung nach der Frist zurueck.
+    # Verfall: ohne Ausgabe geht die Deckung mit der Frist zurueck, erst dann
+    # ist der Platz frei.
     K2 = "cd" * 32
     k3.vormerken(K2, "aus", "anna", "leitung-test", 50_000, w, 500, 100)
     soll(k3.konten["aus"] == 8500, "zweite Vormerkung zahlt")
-    k3.vormerken("ef" * 32, "mallory", "anna", "leitung-test", 50_000, w, 1, 100 + S3_FRIST + 1)
-    soll(K2 not in k3.vorgemerkt and k3.konten["aus"] == 9000, "verfallene Vormerkung: Deckung zurueck")
-    abgewiesen(lambda: k3.melden(K2, "anna", s3_kodieren(lam), 100 + S3_FRIST + 2), "Meldung nach dem Verfall")
+    abgewiesen(lambda: k3.melden(K2, "anna", text, 101 + S3_FRIST), "Meldung nach dem Verfall")
+    abgewiesen(lambda: k3.vormerken("ef" * 32, "aus", "anna", "leitung-test", 50_000, w, 1, 101 + S3_FRIST),
+               "verfallene Vormerkung belegt den Ausgeber bis zur Frist")
+    k3.frist(K2, 101 + S3_FRIST)
+    soll(K2 not in k3.vorgemerkt and k3.konten["aus"] == 9000, "Frist: Deckung zurueck")
+    abgewiesen(lambda: k3.frist(K2, 102 + S3_FRIST), "Frist zweimal")
     # Grenze der offenen Vormerkungen.
     k4 = KetteS3()
-    k4.konto("aus", 10**6, b"aus")
     k4.leitung("leitung-test", 0, 0, 1)
+    for i in range(S3_VORMERKUNGEN_MAX + 1):
+        k4.konto(f"aus{i}", 10, f"aus{i}".encode())
     for i in range(S3_VORMERKUNGEN_MAX):
-        k4.vormerken(f"{i:064x}", "aus", "anna", "leitung-test", 10, w, 1, 5)
-    abgewiesen(lambda: k4.vormerken("f" * 64, "aus", "anna", "leitung-test", 10, w, 1, 5), "mehr als S3_VORMERKUNGEN_MAX")
-    k4.vormerken("f" * 64, "aus", "anna", "leitung-test", 10, w, 1, 5 + S3_FRIST + 1)
-    soll(len(k4.vorgemerkt) == 1, "nach dem Verfall wieder Platz")
+        k4.vormerken(f"{i:064x}", f"aus{i}", "anna", "leitung-test", 10, w, 1, 5)
+    letzter = f"aus{S3_VORMERKUNGEN_MAX}"
+    abgewiesen(lambda: k4.vormerken("f" * 64, letzter, "anna", "leitung-test", 10, w, 1, 5), "mehr als S3_VORMERKUNGEN_MAX")
+    abgewiesen(lambda: k4.vormerken("f" * 64, letzter, "anna", "leitung-test", 10, w, 1, 5 + S3_FRIST + 1),
+               "verfallene belegen den Platz bis zur Frist")
+    k4.frist(f"{0:064x}", 5 + S3_FRIST + 1)
+    k4.vormerken("f" * 64, letzter, "anna", "leitung-test", 10, w, 1, 5 + S3_FRIST + 1)
+    soll(len(k4.vorgemerkt) == S3_VORMERKUNGEN_MAX, "nach der Frist wieder Platz")
 
 # ---------------------------------------------------------------- Annahmestellen
 def stichproben(n: int, stellen: int, k: int, rng: random.Random) -> list[list[int]]:

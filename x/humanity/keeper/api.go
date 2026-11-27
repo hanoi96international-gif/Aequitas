@@ -1273,7 +1273,8 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	for _, art := range []string{quantenWPraegenTxArt, quantenWAnfrageTxArt, quantenWZufallTxArt, quantenWAntwortTxArt, quantenWOffenlegenTxArt, quantenWFristTxArt,
 		quantenWSAusgebenTxArt, quantenWSBindenTxArt, quantenWSWaehlenTxArt, quantenWSAnmeldenTxArt, quantenWSOffenlegenTxArt, quantenWSFristTxArt,
 		quantenSPraepMeldenTxArt, quantenSPraepAbmeldenTxArt, quantenSBestellenTxArt, quantenSLosenTxArt, quantenSBestellFristTxArt, quantenSPfandZurueckTxArt, quantenSIPfandZurueckTxArt,
-		quantenSFaelschungAnmeldenTxArt, quantenSFaelschungOffenlegenTxArt} {
+		quantenSFaelschungAnmeldenTxArt, quantenSFaelschungOffenlegenTxArt,
+		quantenS3VormerkenTxArt, quantenS3MeldenTxArt, quantenS3ZiehenTxArt, quantenS3FristTxArt} {
 		mux.HandleFunc("/api/quanten-w/"+strings.TrimPrefix(art, "quanten_w_"), a.zumLeiter(a.handleQuantenW(art)))
 	}
 	// Weg B, Briefkasten (briefkasten.go): Dienst dieses Knotens, nicht ueber
