@@ -55,8 +55,8 @@ mit voller Kopf-SHA, danach Zweig auf `main` zurücksetzen (`git checkout -B <zw
 
 **Stand 28.11. ~00:20 UTC — HIER WEITERMACHEN** (Betreiber: „Revolution ohne Labor“ → „Ja alles umsetzen“):
 - **Gemergt:** Aequitas #698 (3fddf97), App #154 (071966f, 1.34.0). Keine PRs offen.
-- **Läuft:** `build-apk.yml` (release) auf `aequitas-app` für 1.34.0 – wartet auf die Freigabe `app-signatur`
-  durch den Betreiber. Danach `release-apk.yml` (Veröffentlichung).
+- **Veröffentlicht 28.11. 07:55 UTC:** App **v1.34.0** (Build-Lauf 46086512493, signiert mit dem Release-Schlüssel,
+  APK-SHA-256 `f92cfd14…f048c`): https://github.com/hanoi96international-gif/Aequitas-App/releases/tag/v1.34.0
 - **Aequitas #698:** Probelauf Weg B bis zum Einlösen (`quanten_s_wegb_probelauf_test.go`: 20
   Präparatorinnen, Los v=5, t=3; Doppelvorlage ohne Bund abgewiesen; Absprache t−1 abgewiesen; Gegenprobe t
   besteht); Live-Zähler der Präparatorinnen auf der Website (`qb-zaehler`, 12 Sprachen, Test
