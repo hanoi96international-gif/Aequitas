@@ -51,7 +51,16 @@ als PR-Kommentar; Missbrauchstests und Mutationen; `go test -race` grün; Überg
 mit voller Kopf-SHA, danach Zweig auf `main` zurücksetzen (`git checkout -B <zweig> origin/main`,
 `git merge -s ours --no-edit origin/<zweig>`, push).
 
-**Stand 27.11. ~21:45 UTC — HIER WEITERMACHEN** (Betreiber: „Alles umsetzen“, erledigt):
+**Stand 27.11. ~23:30 UTC — HIER WEITERMACHEN** (Betreiber: „Revolution ohne Labor“ → „Ja alles umsetzen“):
+- **Aequitas-PR (dieser):** Probelauf Weg B bis zum Einlösen (`quanten_s_wegb_probelauf_test.go`: 20
+  Präparatorinnen, Los v=5, t=3; Doppelvorlage ohne Bund abgewiesen; Absprache t−1 abgewiesen; Gegenprobe t
+  besteht); Live-Zähler der Präparatorinnen auf der Website (`qb-zaehler`, 12 Sprachen, Test
+  `TestLanding_ZaehlerPraeparatorinnen`); Einladung nennt die Zugangsprüfung.
+- **App #154** (1.34.0): IBM-Zugang wird vor dem Speichern bei IBM geprüft (Anmeldung + Geräteliste, keine
+  Rechenzeit), Fehler mit Grund, Anleitung zum IBM-Konto (12 Sprachen). Nach dem Merge: `build-apk.yml`
+  (Betreiber gibt `app-signatur` frei), dann `release-apk.yml`.
+
+**Stand 27.11. ~21:45 UTC** (erledigt) (Betreiber: „Alles umsetzen“, erledigt):
 - **Gemergt:** Aequitas **#696** (a07c03f6: Probelauf Weg C `quanten_s3_probelauf_test.go`, ehrliche Website
   `qg-h2`/`logo-sub` in 12 Sprachen mit Test, Einladung `docs/PILOT_PRAEPARATORINNEN_GESUCHT.md`), App **#153**
   (5026ec48: `marke.leitsatz` ohne „fälschungssicher“, Test `ehrlicheTexte.test.ts`). Keine PRs offen.

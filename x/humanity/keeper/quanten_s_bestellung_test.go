@@ -25,7 +25,14 @@ type bWelt struct {
 
 func neueBWelt(t *testing.T) *bWelt {
 	t.Helper()
-	w := &bWelt{qsWelt: neueQsWelt(t, 64, 24), z: qwT0}
+	return neueBWeltN(t, 64, 24)
+}
+
+// neueBWeltN: mit einer Praegung ueber n Stellen und Stichproben dieser Laenge
+// (Probelauf, quanten_s_wegb_probelauf_test.go).
+func neueBWeltN(t *testing.T, n, probe int) *bWelt {
+	t.Helper()
+	w := &bWelt{qsWelt: neueQsWelt(t, n, probe), z: qwT0}
 	quantenSWegBAbOverride.Store(qwT0 - 30*86400)
 	netz, sig := drandTestNetz(t, 0x5eed1234)
 	alt := drandQuicknet

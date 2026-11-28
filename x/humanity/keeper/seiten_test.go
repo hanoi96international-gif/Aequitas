@@ -242,3 +242,23 @@ func TestLanding_QuantengeldEhrlichMitWegC(t *testing.T) {
 		t.Error("deutsche Überschrift ohne „Unser Ziel“")
 	}
 }
+
+// Weg B: der Zaehler der Praeparatorinnen auf /quanten -- live vom Knoten,
+// verborgen ohne Antwort (keine erfundene Zahl), Link zur Einladung, in allen
+// 12 Sprachen beschriftet.
+func TestLanding_ZaehlerPraeparatorinnen(t *testing.T) {
+	for _, muss := range []string{`id="qb-zaehler" hidden`, `id="qb-gemeldet"`, `id="qb-imlos"`, "PILOT_PRAEPARATORINNEN_GESUCHT.md"} {
+		if !strings.Contains(quantenHTML, muss) {
+			t.Errorf("/quanten: %q fehlt", muss)
+		}
+	}
+	if !strings.Contains(landingJS, "async function loadPraeparatoren()") || !strings.Contains(landingJS, "fetch('/api/quanten-w/praeparatoren')") ||
+		!strings.Contains(landingJS, "loadPraeparatoren();") {
+		t.Error("landing.js laedt den Zaehler nicht")
+	}
+	for _, k := range []string{"qb-z-gemeldet", "qb-z-los", "qb-z-ziel", "qb-z-mitmachen"} {
+		if n := strings.Count(landingJS, `"`+k+`":`); n != 12 {
+			t.Errorf("%s: %d Sprachen, erwartet 12", k, n)
+		}
+	}
+}
