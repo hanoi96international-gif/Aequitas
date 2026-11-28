@@ -2,12 +2,12 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 27.11.2026 ~22:00 UTC (Sitzung „Weiter mit Übergabe / zweiter Validator“, Zweig
+Stand: 28.11.2026 ~00:20 UTC (Sitzung „Weiter mit Übergabe / zweiter Validator“, Zweig
 `claude/handover-second-validator-8uibye` in allen vier Repos). Frühere Sitzungen stehen weiter unten.
 Auftrag des Betreibers (27.11.): „Erstmal alles wegen Fördergeld vergessen. Aequitas komplett auf die
 Beine bringen, weiter mit Quantengeld, dass es endlich eine Revolution ist.“
 
-## Auf einen Blick (27.11.2026 ~22:00 UTC)
+## Auf einen Blick (28.11.2026 ~00:20 UTC)
 
 **Offen:** keine PRs in Aequitas, Aequitas-App, aequitas-biometric-beta, aequitas-proof-server.
 
@@ -23,6 +23,8 @@ Beine bringen, weiter mit Quantengeld, dass es endlich eine Revolution ist.“
 | App | #152 | Mehrfach-Beweis (`lib/quantenS3Beweis.ts`) |
 | Aequitas | #696 | Probelauf Weg C; ehrliche Website (12 Sprachen); `docs/PILOT_PRAEPARATORINNEN_GESUCHT.md` |
 | App | #153 | ehrlicher Leitsatz (12 Sprachen) |
+| Aequitas | #698 | Probelauf Weg B bis zum Einlösen; Live-Zähler der Präparatorinnen auf der Website |
+| App | #154 | 1.34.0: IBM-Zugang vor dem Speichern prüfen, Anleitung zum IBM-Konto (12 Sprachen) |
 
 **Weg C (Quantengeld durch Physik) – Stand:** Kette fertig und schlafend (`quantenS3AbUnix` = MaxInt64): Leitungen
 (C2a), Vormerken/Melden/Ziehen/Frist, Pfand, Ausgabe über die Teilmenge, mehrere Sender. App: Inhaberin
@@ -51,12 +53,15 @@ als PR-Kommentar; Missbrauchstests und Mutationen; `go test -race` grün; Überg
 mit voller Kopf-SHA, danach Zweig auf `main` zurücksetzen (`git checkout -B <zweig> origin/main`,
 `git merge -s ours --no-edit origin/<zweig>`, push).
 
-**Stand 27.11. ~23:30 UTC — HIER WEITERMACHEN** (Betreiber: „Revolution ohne Labor“ → „Ja alles umsetzen“):
-- **Aequitas-PR (dieser):** Probelauf Weg B bis zum Einlösen (`quanten_s_wegb_probelauf_test.go`: 20
+**Stand 28.11. ~00:20 UTC — HIER WEITERMACHEN** (Betreiber: „Revolution ohne Labor“ → „Ja alles umsetzen“):
+- **Gemergt:** Aequitas #698 (3fddf97), App #154 (071966f, 1.34.0). Keine PRs offen.
+- **Läuft:** `build-apk.yml` (release) auf `aequitas-app` für 1.34.0 – wartet auf die Freigabe `app-signatur`
+  durch den Betreiber. Danach `release-apk.yml` (Veröffentlichung).
+- **Aequitas #698:** Probelauf Weg B bis zum Einlösen (`quanten_s_wegb_probelauf_test.go`: 20
   Präparatorinnen, Los v=5, t=3; Doppelvorlage ohne Bund abgewiesen; Absprache t−1 abgewiesen; Gegenprobe t
   besteht); Live-Zähler der Präparatorinnen auf der Website (`qb-zaehler`, 12 Sprachen, Test
   `TestLanding_ZaehlerPraeparatorinnen`); Einladung nennt die Zugangsprüfung.
-- **App #154** (1.34.0): IBM-Zugang wird vor dem Speichern bei IBM geprüft (Anmeldung + Geräteliste, keine
+- **App #154** (1.34.0, gemergt): IBM-Zugang wird vor dem Speichern bei IBM geprüft (Anmeldung + Geräteliste, keine
   Rechenzeit), Fehler mit Grund, Anleitung zum IBM-Konto (12 Sprachen). Nach dem Merge: `build-apk.yml`
   (Betreiber gibt `app-signatur` frei), dann `release-apk.yml`.
 
