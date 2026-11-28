@@ -1,6 +1,6 @@
 # Gesucht: der zweite Mensch, der einen Aequitas-Knoten betreibt
 
-**Stand 27.11.2026.** Teil 1 ist zum Weitergeben gedacht (Nachricht, Forum, Freundeskreis).
+**Stand 28.11.2026.** Teil 1 ist zum Weitergeben gedacht (Nachricht, Forum, Freundeskreis).
 Teil 2 ist die Checkliste des Betreibers für den Moment, in dem jemand zusagt.
 
 ---
@@ -44,8 +44,9 @@ cd Aequitas/deploy/knoten && bash einrichten.sh
 ```
 
 Das Skript fragt nach deiner Wallet-Adresse und zeigt am Ende eine Kontrollzahl. In der App, Tab
-**„Knoten“**, bestätigst du nur, wenn die Zahl genau gleich ist. Danach, in der App, Karte **„Prüfer“**:
-**Schlüssel freigeben**, dann **Bewerben**. Alles Weitere: `docs/KNOTEN_EINRICHTEN.md`.
+**„Knoten“**, bestätigst du nur, wenn die Zahl genau gleich ist. Ob alles steht, sagt dir danach
+`bash pruefen.sh` (im selben Ordner). Dann, in der App, Karte **„Prüfer“**: **Schlüssel freigeben**,
+dann **Bewerben**. Alles Weitere: `docs/KNOTEN_EINRICHTEN.md`.
 
 **Was du bekommst — ehrlich:** einen gleichen Anteil am täglichen Validator-Topf (je Mensch, nicht je
 Server). Und mit dir gilt: **kein Einzelner — auch nicht der Betreiber — kann allein Menschen
@@ -79,9 +80,9 @@ stehen Registrierungen still (fail-closed, gewollt).
 2. **Er richtet ein** (`deploy/knoten/einrichten.sh`). Ergebnis: Validator läuft als Beobachter und
    holt auf; Verifier antwortet unter `https://<IP-mit-Strichen>.sslip.io`.
 3. **Prüfen, bevor du zustimmst:**
-   - `curl -s http://SEINE-IP:8080/api/status` — Höhe wie bei C1 (± ein paar Blöcke).
-   - Sein Verifier ist erreichbar, und in der App (Karte „Prüfer“) ist sein Schlüssel freigegeben und
-     seine Bewerbung sichtbar.
+   - `bash deploy/knoten/pruefen.sh SEINE-IP` (von jedem Rechner mit dem Repo) muss mit „Bereit.“
+     enden: Knoten auf Stand, an ihn gebunden, Verifier über HTTPS erreichbar.
+   - In der App (Karte „Prüfer“) ist sein Schlüssel freigegeben und seine Bewerbung sichtbar.
 4. **In der App zustimmen** (Karte „Prüfer“). Den ersten Prüfer neben dir nimmst du als Gründer
    allein auf — öffentlich auf der Kette. Ab dem dritten braucht jede Aufnahme zwei Drittel.
 5. **Gleich danach testen:** eine Registrierung (Testperson). Sie muss **zwei** Bescheinigungen tragen

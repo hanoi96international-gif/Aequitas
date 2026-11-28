@@ -53,7 +53,24 @@ als PR-Kommentar; Missbrauchstests und Mutationen; `go test -race` grün; Überg
 mit voller Kopf-SHA, danach Zweig auf `main` zurücksetzen (`git checkout -B <zweig> origin/main`,
 `git merge -s ours --no-edit origin/<zweig>`, push).
 
-**Stand 28.11. ~00:20 UTC — HIER WEITERMACHEN** (Betreiber: „Revolution ohne Labor“ → „Ja alles umsetzen“):
+**Stand 28.11. ~09:30 UTC — HIER WEITERMACHEN** (Betreiber: „Alles was aufgezählt ist der Reihe nach“:
+1 Grundeinkommen sichtbar, 2 PQ Stufe 1, 3 Play Store, 4 Einstieg zweiter Knoten):
+- **Deploy #698 live** (28.11. 08:39 UTC, Freigabe `produktion`): Zähler der Präparatorinnen auf der Website.
+- **1 + 3: App-PR #155** (offen): Wallet zeigt „X % deines fairen Anteils“ und „Netto im Monat ungefähr ±Y AEQ
+  (Grundeinkommen 30 Tage − Umlaufabgabe)“ (`lib/fairerAnteil.ts`); Play-Store-Texte ehrlich („auf Dezentralität
+  angelegt“, ein Knoten im Testbetrieb) in 12 Sprachen mit Test `storeTexte.test.ts`. Keine Version gezählt
+  (kommt mit dem nächsten Release). Play Store sonst: nur Betreiber (Konto, 12 Tester 14 Tage, Bildschirmfotos).
+- **2: PQ Stufe 1 wartet** (kein Code nötig): `bescheinigung.pq_ab_unix` in `genesis.json` setzen darf erst, wenn
+  der laufende Knoten **seit seinem letzten Start** eine echte Registrierung mit gültigen PQ-Unterschriften
+  gesehen hat (`/api/status` → `bescheinigung_konsens.pq_beobachtet.ok ≥ 1`, `falsch = 0`; Wächter
+  `.github/neustart/bio-pq-bereit.sh` im Deploy). Der Knoten startete zuletzt 28.11. 08:39 UTC neu (Zähler 0).
+  Also: nächste echte Registrierung abwarten, **ohne Deploy dazwischen**, dann Stichtag ≥ jetzt + 30 min
+  setzen (PR, eigene Sicherheitsprüfung). Nicht vorher mergen: der Wächter hielte sonst jeden Deploy an.
+- **4: dieser PR**: Selbsttest `deploy/knoten/pruefen.sh` (lesend; auf dem Server oder `pruefen.sh IP` von
+  außen; 0 bereit / 2 noch nicht fertig / 1 Fehler), Test `scripts/test_knoten_pruefen.sh` in der CI,
+  Anleitung und Checkliste nennen ihn.
+
+**Stand 28.11. ~00:20 UTC** (Betreiber: „Revolution ohne Labor“ → „Ja alles umsetzen“):
 - **Gemergt:** Aequitas #698 (3fddf97), App #154 (071966f, 1.34.0). Keine PRs offen.
 - **Veröffentlicht 28.11. 07:55 UTC:** App **v1.34.0** (Build-Lauf 46086512493, signiert mit dem Release-Schlüssel,
   APK-SHA-256 `f92cfd14…f048c`): https://github.com/hanoi96international-gif/Aequitas-App/releases/tag/v1.34.0

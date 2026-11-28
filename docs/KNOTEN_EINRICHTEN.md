@@ -53,6 +53,20 @@ nach deiner Wallet-Adresse und lässt die IP bestätigen. Dann richtet es nachei
 Bricht ein Teil ab, sagt das Skript warum; danach einfach noch einmal starten (vorhandene Einstellungen
 bleiben). Der Verifier startet erst, wenn der Validator fertig ist.
 
+## Selbsttest: ist mein Knoten bereit?
+
+```bash
+cd Aequitas/deploy/knoten && bash pruefen.sh
+```
+
+Prüft nur lesend und sagt in Zeilen mit `ok` / `noch` / `FEHLER`, was steht und was fehlt: Netz
+erreichbar, Knoten auf Stand (höchstens 30 Blöcke hinter dem Netz), an dich gebunden, Verifier über
+HTTPS erreichbar, Selbstprüfung des Knotens (`/api/wache`). Ergebnis 0 = bereit, 2 = läuft, aber noch
+nicht fertig (holt auf oder noch nicht in der App bestätigt), 1 = Fehler.
+
+Von jedem Rechner aus, z. B. für den ersten Betreiber vor seiner Zustimmung: `bash pruefen.sh DEINE-IP`
+(dann ohne die Selbstprüfung, die nur auf dem Server selbst abgefragt wird).
+
 ## Danach, in der App (Tab „Knoten“)
 
 1. Der Validator läuft als vollwertiger Beobachter mit und prüft jeden Block selbst; die Aufnahme als
