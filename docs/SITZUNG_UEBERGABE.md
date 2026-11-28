@@ -2,10 +2,56 @@
 
 **Zuerst lesen.** Diese Liste wird nach jedem Merge und jedem größeren Schritt aktualisiert,
 damit eine Sitzung, die am Nutzungslimit abbricht, ohne Rückfragen weitermachen kann.
-Stand: 28.11.2026 ~00:20 UTC (Sitzung „Weiter mit Übergabe / zweiter Validator“, Zweig
+Stand: 28.11.2026 ~10:15 UTC (Sitzung „Weiter mit Übergabe / zweiter Validator“, Zweig
 `claude/handover-second-validator-8uibye` in allen vier Repos). Frühere Sitzungen stehen weiter unten.
 Auftrag des Betreibers (27.11.): „Erstmal alles wegen Fördergeld vergessen. Aequitas komplett auf die
 Beine bringen, weiter mit Quantengeld, dass es endlich eine Revolution ist.“
+
+## HIER WEITERMACHEN (28.11.2026 ~10:15 UTC)
+
+**Grundsatz des Betreibers (28.11., „das darfst du nie vergessen“):** Aequitas ist **Geld von einem Menschen für
+Menschen**. Einmaligkeit („ein Mensch, eine Registrierung, die er lebenslang behält“) muss **dezentral** und
+**ohne Staat** gelöst werden. Ausweis-/Pass-/EU-Wallet-Prüfung als Anker lehnt er ab („sonst könnte ich gleich einen
+Ausweis-Check machen“).
+
+**Offen:** keine PRs (außer dem Übergabe-PR dieses Stands). App **v1.34.0 veröffentlicht** (Release-Lauf 46123368693).
+
+**Heute zusätzlich gemergt:** App #155 (Wallet: „X % deines fairen Anteils“ + Netto im Monat; Play-Store-Texte ehrlich
+„ein Knoten im Testbetrieb“, Test `storeTexte.test.ts`; noch in keinem Release), Aequitas #700 (Übergabe), #701
+(Selbsttest `deploy/knoten/pruefen.sh`). Deploy #698 (Zähler der Präparatorinnen) live seit 08:39 UTC.
+
+**Laufende Grundsatzfrage – Einmaligkeit ohne Gesicht/Staat (Analyse, noch keine Entscheidung, KEIN Code):**
+- Bericht mit Quellen: `forschung/einmaligkeit/BERICHT_2026-11-28.md`, Rohnotizen `forschung/einmaligkeit/notizen/`
+  (viele Primärquellen waren in der Sitzung gesperrt: arxiv, ePrint, EDPB, BayLDA, world.org – im Bericht „(Auszug)“).
+- Kern: drei Teilprobleme. (1) **Gleichzeitig zwei Registrierungen** → synchrone Treffen in drand-gelosten
+  Kleingruppen (Physik; drand-Los gibt es schon aus Weg B). (2) **Neuanfang nach Austritt** → nur ein Gedächtnis
+  hilft: gespeicherte Biometrie (rechtlich heikel: Art. 9, BayLDA-Worldcoin, keine Ausnahme „Betrugsabwehr“) oder
+  Menschen (Bürgen mit Pfand, Anfechtung, Ortsgruppen ~100–300). Eine **Staffel des Startbetrags verhindert den
+  Neuanfang NICHT** (Betreiber hat das zurecht beanstandet: jede Staffel mit Ende wird durch Neuanfang zurückgesetzt).
+  (3) **Gekaufte/gemietete Konten** (Idena ~40 %, World-IDs für ~30 $) → jährlich selbst erscheinen, Rückholbarkeit.
+- Anonymität gelöst: Semaphore v4 (MIT, Audit 03/2024, Jahresgruppen + Tages-Nullifier).
+- Heutige Gesichtsprüfung am Handy = schwächster Anker (Injektion/Deepfake, BioBind: 1,8 % Umgehung). Iris ist der
+  stärkste Körper-Anker, braucht aber NIR-Gerät (z. B. IriShield ~180–190 $), Rechtsträger und MPC.
+- **Neu und nirgends gebaut:** Duplikat-Anfechtung durch **gleichzeitiges Erscheinen** beider verdächtiger Konten.
+- Betreiber war zuletzt unzufrieden mit dem Hin und Her (Gesicht → ohne Biometrie → Iris). Nächster sinnvoller
+  Schritt: **ein einseitiges Entscheidungsdokument** (Grundsatz / gelöst / offen / Plan) und eine Angriffs-Simulation
+  für „Treffen + Bürgen + Pfand + Semaphore“, erst danach Code. Nicht wieder von vorn anfangen.
+
+**Lohn für Aufgaben (offen, Entscheidung des Betreibers nötig):** Analyse im Gespräch: Knoten/Verifier/Coordinator
+bekommen heute praktisch nichts (Validator-Topf nur aus 40 % der Swap-Gebühr). Vorschlag: Dienste-Topf aus ~10 % der
+Umlaufabgabe (je Mensch, gedeckelt, nur nachweisbare Leistung), Präparatorinnen bezahlt der Ausgeber (1 AEQ je Ausgabe),
+Bürgen/Abstimmen bewusst unbezahlt. Betreiber hat vier Fragen noch nicht beantwortet. Ein angefangener, **nicht
+geprüfter** Code-Entwurf (Lohn je Gelosten, schlafend) liegt als `docs/entwuerfe/LOHN_PRAEPARATORINNEN.patch` –
+nur nach Entscheidung und mit Tests/Sicherheitsprüfung verwenden.
+
+**DSGVO-Befunde (für die Anwältin):** Marke nach Widerruf ohne tragfähige Grundlage; Verifier als Art.-26-Mitverantwort-
+liche haften gesamtschuldnerisch (besser Art. 28 + Freistellung über einen Rechtsträger); `deploy/knoten/einrichten.sh`
+macht jeden Knotenbetreiber zum Verifier (Trennung Validator/Verifier wäre nötig); Vergleichsdienste bekommen heute das
+Bild; Festplattenverschlüsselung fehlt (`03_TOM.md`).
+
+**PQ Stufe 1 wartet:** `bescheinigung.pq_ab_unix` erst setzen, wenn der Knoten seit dem letzten Start (28.11. 08:39 UTC)
+eine echte Registrierung mit gültigen PQ-Unterschriften sah (`/api/status` → `pq_beobachtet.ok ≥ 1`, `falsch = 0`);
+kein Deploy dazwischen.
 
 ## Auf einen Blick (28.11.2026 ~00:20 UTC)
 
