@@ -1,0 +1,203 @@
+diff --git a/x/humanity/keeper/quanten_s_bestellung.go b/x/humanity/keeper/quanten_s_bestellung.go
+index c65fbee..bdc9cc5 100644
+--- a/x/humanity/keeper/quanten_s_bestellung.go
++++ b/x/humanity/keeper/quanten_s_bestellung.go
+@@ -48,6 +48,7 @@ import (
+ 	"slices"
+ 	"sort"
+ 	"strings"
++	"sync/atomic"
+ )
+ 
+ const (
+@@ -71,8 +72,73 @@ const (
+ 	// Pfand je Bestellung in Prozent der bestellten Deckung (mindestens
+ 	// quantenWPfand). Siehe quantenSBestellPfandFuer.
+ 	quantenSBestellPfandProzent = 10
++	// LOHN JE GELOSTER PRAEPARATORIN (Betreiber, 28.11.2026: "sonst ist das
++	// 0 interessant fuer Leute"). 1 AEQ je Ausgabe.
++	quantenSPraepLohn int64 = 1_000_000
+ )
+ 
++// LOHN DER PRAEPARATORINNEN (Weg B, ab quantenSPraepLohnAbUnix):
++//
++//   - Bestellen: der Ausgeber legt neben dem Pfand v x quantenSPraepLohn in
++//     den Pfandtopf (Lohn der Bestellung). Ohne Deckung fuer Pfand UND Lohn:
++//     abgewiesen. Wer Quantengeld will, bezahlt die Menschen, die es
++//     praeparieren -- nicht das Grundeinkommen, keine neue Geldmenge.
++//   - Ausgabe: je Geloster genau quantenSPraepLohn an das Konto, das in
++//     derselben Transaktion bestaetigt hat (quantenSAusgabeGegenLos prueft jede
++//     Unterschrift; ohne alle Bestaetigungen keine Ausgabe, also kein Lohn).
++//   - Frist nach dem Los (Abbruch): der Lohn geht trotzdem an die Gelosten --
++//     sie haben Zeit freigehalten, und Abbrechen und Neu-Bestellen (Befund
++//     B2b) wird um v x Lohn teurer. Frist OHNE Los auf der Kette: der Lohn geht
++//     wie das Pfand ans Grundeinkommen (niemand ist gelost; wer das Los aus der
++//     oeffentlichen drand-Runde selbst rechnet und abbricht, soll dabei nichts
++//     zurueckbekommen).
++//
++// GELD BLEIBT ERHALTEN: jede Buchung geht Wallet -> Pfandtopf -> Geloste
++// bzw. Grundeinkommen, Summe genau v x quantenSPraepLohn. Bestellungen von
++// vor dem Stichtag tragen keinen Lohn (Feld fehlt, Bytes wie bisher).
++//
++// SCHLAFEND bis zum Stichtag (MaxInt64). Einschalten: Stichtag setzen, mit
++// Deploy-Waechter wie bei den anderen Stichtagen, und App (Ausgeber zeigt die
++// Kosten, Praeparatorin den Lohn).
++var quantenSPraepLohnAbUnix int64 = 9223372036854775807
++
++// quantenSPraepLohnAbOverride: nur fuer Tests (0 = Stichtag oben).
++var quantenSPraepLohnAbOverride atomic.Int64
++
++func quantenSPraepLohnAktiv(t int64) bool {
++	ab := quantenSPraepLohnAbUnix
++	if v := quantenSPraepLohnAbOverride.Load(); v != 0 {
++		ab = v
++	}
++	return t >= ab
++}
++
++// quantenSBestellLohnFuer: Lohn einer Bestellung mit v Gelosten, 0 vor dem
++// Stichtag.
++func quantenSBestellLohnFuer(v int, zeit int64) int64 {
++	if !quantenSPraepLohnAktiv(zeit) {
++		return 0
++	}
++	return int64(v) * quantenSPraepLohn
++}
++
++// quantenSLohnWege: wohin der Lohn einer Bestellung geht, wenn sie endet.
++// Gelost (Los auf der Kette): je Geloster quantenSPraepLohn. Sonst alles ans
++// Grundeinkommen. Keine Wege bei Lohn 0.
++func quantenSLohnWege(b *quantenSBestellung) []quantenWWeg {
++	if b.Lohn <= 0 {
++		return nil
++	}
++	if b.Runde == 0 || len(b.Los) != b.V {
++		return []quantenWWeg{{quantenWPfandAddr, ubiPoolAddr, b.Lohn}}
++	}
++	wege := make([]quantenWWeg, 0, len(b.Los))
++	for _, konto := range b.Los {
++		wege = append(wege, quantenWWeg{quantenWPfandAddr, konto, quantenSPraepLohn})
++	}
++	return wege
++}
++
+ // quantenSBestellPfandFuer: max(quantenWPfand, ceil(D * 10 %)). Wer nach dem
+ // Los abbricht, verliert das Pfand ans Grundeinkommen (B2c). Lohnt sich ein
+ // Los mit t Komplizen nur mit Wahrscheinlichkeit p je Bestellung (s_weg_b.py
+@@ -101,6 +167,7 @@ type quantenSBestellung struct {
+ 	Zeit     int64
+ 	Deckung  int64 // die Ausgabe muss genau sie decken
+ 	Pfand    int64 // im W-Pfandtopf bis Ausgabe (zurueck) oder Frist (verfaellt)
++	Lohn     int64 // v x quantenSPraepLohn im W-Pfandtopf (0 vor dem Stichtag), siehe quantenSLohnWege
+ 	Abbild   []string
+ 	Runde    uint64
+ 	Zufall   [32]byte
+@@ -115,6 +182,7 @@ type quantenSBestellungForm struct {
+ 	Zeit     int64    `json:"zeit"`
+ 	Deckung  int64    `json:"deckung"`
+ 	Pfand    int64    `json:"pfand"`
++	Lohn     int64    `json:"lohn,omitempty"`
+ 	Abbild   []string `json:"abbild"`
+ 	Runde    uint64   `json:"runde,omitempty"`
+ 	Zufall   string   `json:"zufall,omitempty"`
+@@ -153,7 +221,7 @@ func quantenSBestellungGroessen(v, t int) bool {
+ }
+ 
+ func (b *quantenSBestellung) form(K string) quantenSBestellungForm {
+-	f := quantenSBestellungForm{K: K, Ausgeber: b.Ausgeber, V: b.V, T: b.T, Zeit: b.Zeit, Deckung: b.Deckung, Pfand: b.Pfand, Abbild: b.Abbild, Runde: b.Runde, Los: b.Los}
++	f := quantenSBestellungForm{K: K, Ausgeber: b.Ausgeber, V: b.V, T: b.T, Zeit: b.Zeit, Deckung: b.Deckung, Pfand: b.Pfand, Lohn: b.Lohn, Abbild: b.Abbild, Runde: b.Runde, Los: b.Los}
+ 	if b.Runde != 0 {
+ 		f.Zufall = hex.EncodeToString(b.Zufall[:])
+ 	}
+@@ -173,7 +241,8 @@ func quantenSBestellungenLesen(fs []quantenSBestellungForm) (map[string]*quanten
+ 		if !istHash64(f.K) || (i > 0 && f.K <= fs[i-1].K) || !kanonischeAdresse(f.Ausgeber) || ausgeber[f.Ausgeber] ||
+ 			!quantenSBestellungGroessen(f.V, f.T) || f.Zeit <= 0 || len(f.Abbild) < quantenSLosPoolFaktor*f.V || len(f.Abbild) > quantenSPraepHoechstens ||
+ 			slices.Contains(f.Abbild, f.Ausgeber) || // nie im eigenen Los (s. bestellen)
+-			f.Deckung < quantenMindestDeckungMik || f.Pfand != quantenSBestellPfandFuer(f.Deckung) {
++			f.Deckung < quantenMindestDeckungMik || f.Pfand != quantenSBestellPfandFuer(f.Deckung) ||
++			(f.Lohn != 0 && f.Lohn != int64(f.V)*quantenSPraepLohn) {
+ 			return nil, falsch
+ 		}
+ 		ausgeber[f.Ausgeber] = true
+@@ -182,7 +251,7 @@ func quantenSBestellungenLesen(fs []quantenSBestellungForm) (map[string]*quanten
+ 				return nil, falsch
+ 			}
+ 		}
+-		b := &quantenSBestellung{Ausgeber: f.Ausgeber, V: f.V, T: f.T, Zeit: f.Zeit, Deckung: f.Deckung, Pfand: f.Pfand, Abbild: slices.Clone(f.Abbild)}
++		b := &quantenSBestellung{Ausgeber: f.Ausgeber, V: f.V, T: f.T, Zeit: f.Zeit, Deckung: f.Deckung, Pfand: f.Pfand, Lohn: f.Lohn, Abbild: slices.Clone(f.Abbild)}
+ 		if f.Runde == 0 {
+ 			if f.Zufall != "" || f.Los != nil {
+ 				return nil, falsch
+@@ -219,7 +288,8 @@ func quantenSBestellungVerfallen(b *quantenSBestellung, zeit int64) bool {
+ }
+ 
+ // quantenSBestellungenAufraeumen: verfallene Bestellungen vergessen; ihr Pfand
+-// geht ans Grundeinkommen (Wege in fester Reihenfolge nach K).
++// geht ans Grundeinkommen, ihr Lohn nach quantenSLohnWege (Wege in fester
++// Reihenfolge nach K).
+ func quantenSBestellungenAufraeumen(r *quantenWRegister, zeit int64) []quantenWWeg {
+ 	var ks []string
+ 	for k, b := range r.Best {
+@@ -231,6 +301,7 @@ func quantenSBestellungenAufraeumen(r *quantenWRegister, zeit int64) []quantenWW
+ 	var wege []quantenWWeg
+ 	for _, k := range ks {
+ 		wege = append(wege, quantenWWeg{quantenWPfandAddr, ubiPoolAddr, r.Best[k].Pfand})
++		wege = append(wege, quantenSLohnWege(r.Best[k])...)
+ 		delete(r.Best, k)
+ 	}
+ 	return wege
+@@ -309,11 +380,16 @@ func (cs *ChainState) quantenSBestellBescheidLocked(ctx context.Context, tx *Tra
+ 			return quantenWBefund("quanten_s_los_register", "Register zu klein: %d im Los, noetig %d fuer v = %d", len(abbild), quantenSLosPoolFaktor*q.PraepZahl, q.PraepZahl), nil
+ 		}
+ 		pfand := quantenSBestellPfandFuer(q.Deckung)
+-		if cs.quantenWMikroLocked(ctx, wallet) < pfand {
+-			return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ Pfand", kurzAdresse(wallet), pfand), nil
++		lohn := quantenSBestellLohnFuer(q.PraepZahl, zeit)
++		if cs.quantenWMikroLocked(ctx, wallet) < pfand+lohn {
++			return quantenWBefund("quanten_w_deckung", "%s hat keine %d Mikro-AEQ fuer Pfand und Lohn", kurzAdresse(wallet), pfand+lohn), nil
++		}
++		neu.Best[q.K] = &quantenSBestellung{Ausgeber: wallet, V: q.PraepZahl, T: q.T, Zeit: zeit, Deckung: q.Deckung, Pfand: pfand, Lohn: lohn, Abbild: abbild}
++		wege = append(wege, quantenWWeg{wallet, quantenWPfandAddr, pfand})
++		if lohn > 0 {
++			wege = append(wege, quantenWWeg{wallet, quantenWPfandAddr, lohn})
+ 		}
+-		neu.Best[q.K] = &quantenSBestellung{Ausgeber: wallet, V: q.PraepZahl, T: q.T, Zeit: zeit, Deckung: q.Deckung, Pfand: pfand, Abbild: abbild}
+-		return quantenWBescheid{reg: neu, wege: append(wege, quantenWWeg{wallet, quantenWPfandAddr, pfand}), felder: QuantenWAngaben{Pfand: pfand}}, nil
++		return quantenWBescheid{reg: neu, wege: wege, felder: QuantenWAngaben{Pfand: pfand}}, nil
+ 
+ 	case quantenSBestellFristTxArt:
+ 		b := reg.Best[q.K]
+@@ -324,7 +400,8 @@ func (cs *ChainState) quantenSBestellBescheidLocked(ctx context.Context, tx *Tra
+ 			return quantenWBefund("quanten_w_frist", "Bestellung %s gilt bis %d", q.K[:12], sattAdd(b.Zeit, quantenSBestellFrist)), nil
+ 		}
+ 		delete(neu.Best, q.K)
+-		return quantenWBescheid{reg: neu, wege: []quantenWWeg{{quantenWPfandAddr, ubiPoolAddr, b.Pfand}}, felder: QuantenWAngaben{Pfand: b.Pfand}}, nil
++		wege := append([]quantenWWeg{{quantenWPfandAddr, ubiPoolAddr, b.Pfand}}, quantenSLohnWege(b)...)
++		return quantenWBescheid{reg: neu, wege: wege, felder: QuantenWAngaben{Pfand: b.Pfand}}, nil
+ 
+ 	case quantenSLosenTxArt:
+ 		b := reg.Best[q.K]
+@@ -388,7 +465,8 @@ func quantenSAusgabeGegenLos(b *quantenSBestellung, wallet string, q *QuantenWAn
+ func quantenSBestellungAnsicht(K string, b *quantenSBestellung) map[string]interface{} {
+ 	r, _ := quantenSLosRunde(b.Zeit)
+ 	m := map[string]interface{}{"k": K, "ausgeber": b.Ausgeber, "v": b.V, "t": b.T, "zeit": b.Zeit,
+-		"frist": sattAdd(b.Zeit, quantenSBestellFrist), "im_abbild": len(b.Abbild), "runde": r, "deckung": b.Deckung, "pfand": b.Pfand}
++		"frist": sattAdd(b.Zeit, quantenSBestellFrist), "im_abbild": len(b.Abbild), "runde": r, "deckung": b.Deckung, "pfand": b.Pfand,
++		"lohn": b.Lohn, "lohn_je_praeparatorin": quantenSPraepLohn}
+ 	if b.Runde != 0 {
+ 		m["los"] = b.Los
+ 	}
+diff --git a/x/humanity/keeper/quanten_w_s_kette.go b/x/humanity/keeper/quanten_w_s_kette.go
+index e1b6532..186e22d 100644
+--- a/x/humanity/keeper/quanten_w_s_kette.go
++++ b/x/humanity/keeper/quanten_w_s_kette.go
+@@ -677,6 +677,9 @@ func (cs *ChainState) quantenWSAusgebenBescheidLocked(ctx context.Context, tx *T
+ 			neu.Lose[q.K] = slices.Clone(b.Los)
+ 		}
+ 		u.wege = append(u.wege, quantenWWeg{quantenWPfandAddr, wallet, b.Pfand})
++		// Lohn je Geloster: alle haben in dieser Ausgabe bestaetigt
++		// (quantenSAusgabeGegenLos), b.Los ist also vollstaendig gelost.
++		u.wege = append(u.wege, quantenSLohnWege(b)...)
+ 		u.felder.Pfand, u.felder.PfandAn = b.Pfand, wallet
+ 	}
+ 	return u, nil
