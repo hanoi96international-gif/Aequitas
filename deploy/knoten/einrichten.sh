@@ -91,6 +91,8 @@ Du bist jetzt Knotenbetreiber. Was noch fehlt, geht in der App (Tab "Knoten"):
     Stimmen zwei Drittel der zugelassenen Knotenbetreiber zu, bist du zugelassen.
 You are now a node operator. The rest happens in the app ("Node" tab).
 
+Ob alles steht / Is everything ready:  bash pruefen.sh
+
 Sichere beide Dateien / Back up both files:
     Aequitas/deploy/validator/.env
     Aequitas/deploy/verifier/.env

@@ -177,6 +177,7 @@ jobs:
       - run: bash scripts/test_quanten_s_los_nicht_verpasst.sh
       - run: bash scripts/test_quanten_s_pfaender_nicht_verpasst.sh
       - run: bash scripts/test_knoten_einrichten.sh
+      - run: bash scripts/test_knoten_pruefen.sh
       - run: bash scripts/test_quanten_urteil_nicht_verpasst.sh
       - run: bash scripts/test_quantengeld_mindest_pruefer.sh
       - run: bash scripts/test_quantengeld_noten_tabelle.sh
